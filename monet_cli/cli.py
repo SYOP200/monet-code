@@ -804,7 +804,7 @@ def doctor() -> None:
 
     console.print(t)
     console.print(
-        f"  [{DIM}]palette[/] [#0D1117 on #0D1117]  [/] [bold {FG}]#88C0D0[/]  "
+        f"  [{DIM}]palette[/] [#000000 on #000000]  [/] [bold {FG}]#88C0D0[/]  "
         f"[bold {TEAL}]#8FBCBB[/]  [bold {BLUE}]#81A1C1[/]"
     )
 

@@ -5,4 +5,4 @@ launches the Go/Charm TUI and handles Ollama, the model catalog, and file
 organization from the shell.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

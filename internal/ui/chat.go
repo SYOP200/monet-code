@@ -13,6 +13,7 @@ import (
 type chatMessage struct {
 	role        string // user | assistant | tool | notice | error
 	content     string
+	thinking    string
 	toolName    string
 	toolSummary string
 	toolResult  string
@@ -20,6 +21,12 @@ type chatMessage struct {
 	rendered    string
 	renderWidth int
 	complete    bool
+}
+
+type messageSpan struct {
+	start int
+	end   int
+	index int
 }
 
 type approvalRequest struct {
@@ -38,12 +45,17 @@ type chatPane struct {
 	activity   string
 	generating bool
 
-	model      string
-	gen        int
-	pending    *approvalRequest
-	autoScroll bool
-	width      int
-	height     int
+	model        string
+	gen          int
+	pending      *approvalRequest
+	autoScroll   bool
+	width        int
+	height       int
+	menu         string
+	menuH        int
+	menuTop      int
+	spans        []messageSpan
+	lastThinking string
 }
 
 func newChatPane(width int) *chatPane {
@@ -99,7 +111,7 @@ func (c *chatPane) addUser(text string) {
 func (c *chatPane) startAssistant() {
 	c.streaming = c.add(&chatMessage{role: "assistant", complete: false})
 	c.generating = true
-	c.activity = "thinking"
+	c.activity = "thinking…"
 }
 
 func (c *chatPane) appendDelta(text string) {
@@ -108,7 +120,7 @@ func (c *chatPane) appendDelta(text string) {
 	}
 	c.streaming.content += text
 	c.streaming.renderWidth = -1
-	c.activity = "writing"
+	c.activity = "writing…"
 }
 
 func (c *chatPane) addTool(name, summary string) {
@@ -141,6 +153,9 @@ func (c *chatPane) finishStream() {
 	if c.streaming != nil {
 		c.streaming.complete = true
 		c.streaming.renderWidth = -1
+		if strings.TrimSpace(c.streaming.thinking) != "" {
+			c.lastThinking = c.streaming.thinking
+		}
 		if strings.TrimSpace(c.streaming.content) == "" && c.streaming.role == "assistant" {
 			c.streaming.content = "_no content returned_"
 		}
@@ -152,30 +167,51 @@ func (c *chatPane) finishStream() {
 	c.pending = nil
 }
 
-func (c *chatPane) renderAll(width int) string {
-	contentW := width - 2
+func (c *chatPane) renderAll(contentW int) string {
 	if contentW < 20 {
 		contentW = 20
 	}
-	var parts []string
-	for _, m := range c.messages {
+	var b strings.Builder
+	c.spans = c.spans[:0]
+	line := 0
+	for i, m := range c.messages {
 		if m.renderWidth != contentW {
 			m.rendered = renderMessage(m, contentW)
 			m.renderWidth = contentW
 		}
-		if m.rendered != "" {
-			parts = append(parts, m.rendered)
+		if m.rendered == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+			line += 2
+		}
+		start := line
+		b.WriteString(m.rendered)
+		line += strings.Count(m.rendered, "\n") + 1
+		c.spans = append(c.spans, messageSpan{start: start, end: line - 1, index: i})
+	}
+	return b.String()
+}
+
+// messageAt maps a rendered content line back to a message.
+func (c *chatPane) messageAt(line int) *chatMessage {
+	for _, span := range c.spans {
+		if line >= span.start && line <= span.end {
+			if span.index >= 0 && span.index < len(c.messages) {
+				return c.messages[span.index]
+			}
 		}
 	}
-	if c.generating && c.thinking.Len() > 0 && c.streaming != nil {
-		snippet := strings.ReplaceAll(c.thinking.String(), "\n", " ")
-		snippet = strings.TrimSpace(snippet)
-		if len(snippet) > 160 {
-			snippet = "…" + snippet[len(snippet)-160:]
-		}
-		parts = append(parts, theme.Notice.Render("⋯ "+snippet))
+	return nil
+}
+
+func oneLine(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if max > 0 && len(s) > max {
+		return "…" + s[len(s)-max:]
 	}
-	return strings.Join(parts, "\n\n")
+	return s
 }
 
 func renderMessage(m *chatMessage, width int) string {
@@ -191,6 +227,19 @@ func renderMessage(m *chatMessage, width int) string {
 		b.WriteString(renderPlain(m.content, inner))
 	case "assistant":
 		b.WriteString(theme.AssistantLabel.Render("◆ monet"))
+		if m.thinking != "" || !m.complete {
+			marker := "  ▸ thinking · click to view"
+			if !m.complete {
+				snippet := oneLine(m.thinking, 90)
+				marker = "  ⋯ thinking…"
+				if snippet != "" {
+					marker += "  " + snippet
+				}
+				marker += "  · click to view"
+			}
+			b.WriteString("\n")
+			b.WriteString(theme.Notice.Render(marker))
+		}
 		b.WriteString("\n")
 		switch {
 		case m.content == "":
@@ -244,7 +293,11 @@ func (c *chatPane) view(w, h int, frame int, focused bool) string {
 	if c.pending != nil {
 		approvalH = 4
 	}
-	vpH := h - 5 - approvalH
+	menuH := c.menuH
+	if menuH > h-12 {
+		menuH = max(0, h-12)
+	}
+	vpH := h - 5 - approvalH - menuH
 	if vpH < 3 {
 		vpH = 3
 	}
@@ -268,6 +321,10 @@ func (c *chatPane) view(w, h int, frame int, focused bool) string {
 	if c.pending != nil {
 		msg := theme.WarnText.Render("⚠ "+c.pending.tool) + "  " + theme.ModalText.Render(c.pending.summary)
 		rows = append(rows, frameBox("APPROVAL", "", msg, w, 4, theme.Yellow, theme.Bg))
+	}
+	c.menuTop = vpH + approvalH
+	if menuH > 0 && c.menu != "" {
+		rows = append(rows, c.menu)
 	}
 	rows = append(rows, frameBox("", "", promptLines(c.input.View()), w, 5, border, theme.Bg))
 	return strings.Join(rows, "\n")
@@ -307,5 +364,43 @@ func (c *chatPane) scrollDown() {
 	c.viewport.PageDown()
 	if c.viewport.AtBottom() {
 		c.autoScroll = true
+	}
+}
+
+func (c *chatPane) scrollBy(delta int) {
+	if delta < 0 {
+		c.viewport.LineUp(-delta)
+		c.autoScroll = false
+		return
+	}
+	c.viewport.LineDown(delta)
+	if c.viewport.AtBottom() {
+		c.autoScroll = true
+	}
+}
+
+// toolActivity turns a tool name into a short present-tense status label.
+func toolActivity(name string) string {
+	switch name {
+	case "read_file":
+		return "reading…"
+	case "write_file":
+		return "editing file…"
+	case "create_directory":
+		return "designing…"
+	case "list_files", "search_files":
+		return "exploring…"
+	case "delete_file":
+		return "removing a file…"
+	case "move_file":
+		return "moving a file…"
+	case "run_command":
+		return "running a command…"
+	case "git_status", "git_diff", "git_log":
+		return "checking git…"
+	case "git_commit":
+		return "committing…"
+	default:
+		return name + "…"
 	}
 }

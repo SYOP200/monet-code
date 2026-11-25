@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +73,21 @@ func NewRunner(client *ollama.Client, root, model string) *Runner {
 	}
 }
 
+// NewSubagentRunner creates a read-only helper that can inspect the workspace
+// but cannot mutate files or run shell commands.
+func NewSubagentRunner(client *ollama.Client, root, model string) *Runner {
+	return &Runner{
+		client:    client,
+		exec:      NewReadOnlyExecutor(root),
+		root:      root,
+		model:     model,
+		system:    BuildSystemPrompt(root) + "\nYou are a read-only subagent. Investigate the codebase and report findings. Do not ask to edit files.\n",
+		events:    make(chan Event, 512),
+		approvals: make(chan bool, 1),
+		MaxSteps:  6,
+	}
+}
+
 // Events is the stream of turn events.
 func (r *Runner) Events() <-chan Event { return r.events }
 
@@ -95,7 +112,43 @@ func (r *Runner) SetSystemPrompt(prompt string) {
 	r.system = prompt
 }
 
-// SystemPrompt describes the workspace to the model.
+// MemoryFiles lists the project memory files that exist, in load order.
+func MemoryFiles(root string) []string {
+	var out []string
+	for _, rel := range []string{"AGENTS.md", "CLAUDE.md", "MONET.md", ".monet/memory.md"} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			out = append(out, rel)
+		}
+	}
+	return out
+}
+
+// ReadProjectMemory returns the concatenated project memory and the files it
+// came from. Each file is capped so a huge memory file cannot blow the context.
+func ReadProjectMemory(root string) (string, []string) {
+	var b strings.Builder
+	var loaded []string
+	total := 0
+	for _, rel := range MemoryFiles(root) {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		text, _, err := files.ReadText(path, 24<<10)
+		if err != nil || strings.TrimSpace(text) == "" {
+			continue
+		}
+		if total+len(text) > 48<<10 {
+			text = text[:maxInt(0, 48<<10-total)] + "\n… memory truncated"
+		}
+		b.WriteString("\n--- project memory: " + rel + " ---\n")
+		b.WriteString(strings.TrimSpace(text))
+		b.WriteString("\n")
+		total += len(text)
+		loaded = append(loaded, rel)
+	}
+	return b.String(), loaded
+}
+
+// SystemPrompt describes the workspace and loads project memory.
 func BuildSystemPrompt(root string) string {
 	summary := files.SummaryTree(root, 40)
 	var b strings.Builder
@@ -108,13 +161,21 @@ func BuildSystemPrompt(root string) string {
 Operate as a careful pair programmer:
 - Inspect before you edit. Use read_file, list_files and search_files to understand the code.
 - Use write_file with the COMPLETE new file content when making changes. Never use placeholders like "// rest unchanged".
+- Use create_directory for new folders; write_file also creates parent directories.
 - Prefer small, focused changes. Preserve the surrounding style, naming and formatting.
 - Paths are relative to the workspace; never try to escape it.
-- Tool calls that modify files require the user's approval and may be denied.
+- Tool calls that modify files or run commands require the user's approval and may be denied.
+- run_command is for builds, tests, formatters and git. Recursive deletion, sudo and disk tools are refused.
+- Before a risky edit, the agent snapshots the file; the user can run /rewind to restore it.
+- Respect AGENTS.md, CLAUDE.md and .monet/memory.md as project instructions.
 - After tool results, explain what changed in one or two short sentences.
 - Answer in Markdown: short paragraphs, bullet lists, fenced code blocks with language tags.
 - Be direct and concise. If you are unsure, say so and ask one focused question.
 `)
+	if memory, loaded := ReadProjectMemory(root); memory != "" {
+		b.WriteString(memory)
+		fmt.Fprintf(&b, "\n(Loaded project memory from: %s)\n", strings.Join(loaded, ", "))
+	}
 	b.WriteString("Current date: " + time.Now().Format("2006-01-02") + "\n")
 	return b.String()
 }
@@ -174,6 +235,62 @@ func (r *Runner) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.messages = nil
+}
+
+// SetHistory replaces the conversation history, used when resuming a session.
+func (r *Runner) SetHistory(messages []ollama.Message) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.messages = make([]ollama.Message, len(messages))
+	copy(r.messages, messages)
+}
+
+// Compact summarizes older messages and keeps the most recent turns.
+func (r *Runner) Compact(ctx context.Context) (string, error) {
+	r.mu.Lock()
+	model := r.model
+	history := make([]ollama.Message, len(r.messages))
+	copy(history, r.messages)
+	r.mu.Unlock()
+	if model == "" {
+		return "", fmt.Errorf("no model selected")
+	}
+	if len(history) < 4 {
+		return "", fmt.Errorf("conversation is already short")
+	}
+	msgs := []ollama.Message{
+		{Role: ollama.RoleSystem, Content: "You compress coding-agent conversations. Preserve decisions, file paths, commands, errors and open questions. Be concise."},
+	}
+	msgs = append(msgs, history...)
+	msgs = append(msgs, ollama.Message{Role: ollama.RoleUser, Content: "Summarize the conversation so far in a compact briefing for your future self."})
+	var out strings.Builder
+	err := r.client.Chat(ctx, ollama.ChatRequest{
+		Model:    model,
+		Messages: msgs,
+		Options:  map[string]any{"temperature": 0.1, "num_ctx": 16384},
+	}, func(chunk ollama.ChatChunk) error {
+		out.WriteString(chunk.Message.Content)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	summary := strings.TrimSpace(out.String())
+	if summary == "" {
+		return "", fmt.Errorf("model returned an empty summary")
+	}
+	keep := 4
+	if len(history) <= keep {
+		keep = len(history)
+	}
+	tail := history[len(history)-keep:]
+	r.mu.Lock()
+	r.messages = append([]ollama.Message{{
+		Role:    ollama.RoleAssistant,
+		Content: "Earlier conversation summary:\n" + summary,
+	}}, tail...)
+	r.mu.Unlock()
+	return summary, nil
 }
 
 // History returns a copy of the conversation (without the system prompt).
@@ -302,7 +419,7 @@ func (r *Runner) loop(ctx context.Context, gen int) {
 					continue
 				}
 			}
-			result, execErr := r.exec.Execute(name, call.Function.Arguments)
+			result, execErr := r.exec.ExecuteContext(ctx, name, call.Function.Arguments)
 			if execErr != nil {
 				result = "error: " + execErr.Error()
 			}

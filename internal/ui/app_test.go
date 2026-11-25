@@ -19,15 +19,18 @@ func TestSnapshotsFillTheirFrame(t *testing.T) {
 	}
 	app := New(root, "qwen3.5:4b", "http://127.0.0.1:1")
 
-	for _, view := range []string{"chat", "editor", "models", "files", "help"} {
-		out := app.SnapshotTab(view, 100, 30)
-		lines := strings.Split(out, "\n")
-		if len(lines) != 30 {
-			t.Errorf("%s: rendered %d rows, want 30", view, len(lines))
-		}
-		for i, line := range lines {
-			if got := lipgloss.Width(line); got != 100 {
-				t.Errorf("%s: row %d is %d columns, want 100", view, i, got)
+	sizes := []struct{ w, h int }{{60, 18}, {80, 24}, {100, 30}, {120, 40}}
+	for _, size := range sizes {
+		for _, view := range []string{"chat", "editor", "models", "files", "help", "thinking", "message", "slash"} {
+			out := app.SnapshotTab(view, size.w, size.h)
+			lines := strings.Split(out, "\n")
+			if len(lines) != size.h {
+				t.Errorf("%s %dx%d: rendered %d rows", view, size.w, size.h, len(lines))
+			}
+			for i, line := range lines {
+				if got := lipgloss.Width(line); got != size.w {
+					t.Errorf("%s %dx%d: row %d is %d columns", view, size.w, size.h, i, got)
+				}
 			}
 		}
 	}

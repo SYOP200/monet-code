@@ -164,3 +164,21 @@ func (f *filesPane) previewContent(w, h int) string {
 	}
 	return strings.Join(rows, "\n")
 }
+
+// rowAt maps a view-relative row in the preview to a move index.
+func (f *filesPane) rowAt(viewY int) (int, bool) {
+	if !f.preview || f.width < 30 || f.height < 10 || len(f.moves) == 0 {
+		return 0, false
+	}
+	groupsH := clamp(len(f.report.Groups)+2, 4, max(4, (f.height-2)/2))
+	previewH := f.height - 1 - groupsH
+	contentTop := 1 + groupsH + 1
+	if viewY < contentTop || viewY >= contentTop+previewH-2 {
+		return 0, false
+	}
+	idx := f.offset + viewY - contentTop
+	if idx < 0 || idx >= len(f.moves) {
+		return 0, false
+	}
+	return idx, true
+}

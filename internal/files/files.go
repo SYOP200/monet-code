@@ -303,6 +303,7 @@ var SkipDirs = map[string]bool{
 	"dist": true, "build": true, ".next": true, ".nuxt": true, "target": true,
 	".idea": true, ".vscode": true, ".DS_Store": true, ".cache": true,
 	"coverage": true, ".terraform": true, "Pods": true,
+	".monet": true,
 }
 
 // ShouldSkipDir reports whether a directory is build output, a cache or a

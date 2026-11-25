@@ -4,11 +4,13 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/syop200/monet-code/internal/files"
 	"github.com/syop200/monet-code/internal/ollama"
@@ -16,11 +18,21 @@ import (
 
 // Executor runs tools inside a single workspace root.
 type Executor struct {
-	Root string
+	Root     string
+	ReadOnly bool
+	Hooks    Hooks
 }
 
 // NewExecutor creates an executor rooted at root.
-func NewExecutor(root string) *Executor { return &Executor{Root: root} }
+func NewExecutor(root string) *Executor {
+	return &Executor{Root: root, Hooks: LoadHooks(root)}
+}
+
+// NewReadOnlyExecutor creates an executor that can inspect a workspace but not
+// mutate it. Subagents use this.
+func NewReadOnlyExecutor(root string) *Executor {
+	return &Executor{Root: root, ReadOnly: true}
+}
 
 // Definitions returns the tool schema advertised to the model.
 func (e *Executor) Definitions() []ollama.Tool {
@@ -30,7 +42,7 @@ func (e *Executor) Definitions() []ollama.Tool {
 	num := func(desc string) map[string]any {
 		return map[string]any{"type": "integer", "description": desc}
 	}
-	return []ollama.Tool{
+	tools := []ollama.Tool{
 		{
 			Type: "function",
 			Function: ollama.ToolFunction{
@@ -105,13 +117,131 @@ func (e *Executor) Definitions() []ollama.Tool {
 				},
 			},
 		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "delete_file",
+				Description: "Delete one regular file inside the workspace. Directories are never deleted recursively. Requires user approval.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": str("File path relative to the workspace root"),
+					},
+					"required": []string{"path"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "move_file",
+				Description: "Move or rename one file inside the workspace. Refuses to overwrite an existing file. Requires user approval.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"from": str("Existing file path relative to the workspace root"),
+						"to":   str("New file path relative to the workspace root"),
+					},
+					"required": []string{"from", "to"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "run_command",
+				Description: "Run a shell command inside the workspace, e.g. go test ./..., npm run build or git status. Destructive commands (rm -rf, sudo, mkfs, git clean) are refused. Requires user approval.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"command":         str("Shell command to run"),
+						"cwd":             str("Working directory relative to the workspace root (optional)"),
+						"timeout_seconds": num("Timeout in seconds, 1-300 (optional, default 60)"),
+					},
+					"required": []string{"command"},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "git_status",
+				Description: "Show short git status for the workspace.",
+				Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "git_diff",
+				Description: "Show the working-tree diff, optionally limited to a path.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": str("Optional path relative to the workspace root"),
+					},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "git_log",
+				Description: "Show recent commits in one-line form.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"max": num("Number of commits, 1-50 (optional, default 10)"),
+					},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: ollama.ToolFunction{
+				Name:        "git_commit",
+				Description: "Stage all changes and create a commit with the given message. Requires user approval.",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"message": str("Commit message"),
+					},
+					"required": []string{"message"},
+				},
+			},
+		},
 	}
+	if e.ReadOnly {
+		allowed := map[string]bool{
+			"read_file": true, "list_files": true, "search_files": true,
+			"git_status": true, "git_diff": true, "git_log": true,
+		}
+		var filtered []ollama.Tool
+		for _, tool := range tools {
+			if allowed[tool.Function.Name] {
+				filtered = append(filtered, tool)
+			}
+		}
+		return filtered
+	}
+	return tools
+}
+
+func readOnlyTool(name string) bool {
+	switch name {
+	case "read_file", "list_files", "search_files", "git_status", "git_diff", "git_log":
+		return true
+	}
+	return false
 }
 
 // RequiresApproval reports whether a tool mutates the workspace.
 func (e *Executor) RequiresApproval(name string) bool {
+	if e.ReadOnly {
+		return false
+	}
 	switch name {
-	case "write_file", "create_directory":
+	case "write_file", "create_directory", "delete_file", "move_file", "run_command", "git_commit":
 		return true
 	}
 	return false
@@ -155,23 +285,89 @@ func (e *Executor) DescribeCall(name string, args json.RawMessage) string {
 		}
 		_ = json.Unmarshal(args, &a)
 		return a.Path
+	case "delete_file":
+		var a struct {
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return a.Path
+	case "move_file":
+		var a struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return a.From + " → " + a.To
+	case "run_command":
+		var a struct {
+			Command string `json:"command"`
+			Cwd     string `json:"cwd"`
+		}
+		_ = json.Unmarshal(args, &a)
+		if a.Cwd != "" {
+			return a.Command + "  (in " + a.Cwd + ")"
+		}
+		return a.Command
+	case "git_diff":
+		var a struct {
+			Path string `json:"path"`
+		}
+		_ = json.Unmarshal(args, &a)
+		if a.Path == "" {
+			return "working tree"
+		}
+		return a.Path
+	case "git_log":
+		var a struct {
+			Max int `json:"max"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return fmt.Sprintf("%d commits", maxInt(a.Max, 10))
+	case "git_commit":
+		var a struct {
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return a.Message
 	}
 	return ""
 }
 
-// Execute runs a tool call and returns the text handed back to the model.
+// Execute runs a tool call with a background context.
 func (e *Executor) Execute(name string, args json.RawMessage) (string, error) {
+	return e.ExecuteContext(context.Background(), name, args)
+}
+
+// ExecuteContext runs a tool call and returns the text handed back to the model.
+func (e *Executor) ExecuteContext(ctx context.Context, name string, args json.RawMessage) (string, error) {
+	if e.ReadOnly && !readOnlyTool(name) {
+		return "", fmt.Errorf("read-only subagent cannot call %s", name)
+	}
 	switch name {
 	case "read_file":
 		return e.readFile(args)
 	case "write_file":
-		return e.writeFile(args)
+		return e.writeFile(ctx, args)
 	case "list_files":
 		return e.listFiles(args)
 	case "search_files":
 		return e.searchFiles(args)
 	case "create_directory":
 		return e.createDir(args)
+	case "delete_file":
+		return e.deleteFile(ctx, args)
+	case "move_file":
+		return e.moveFile(ctx, args)
+	case "run_command":
+		return e.runCommand(ctx, args)
+	case "git_status":
+		return e.gitStatus(ctx)
+	case "git_diff":
+		return e.gitDiff(ctx, args)
+	case "git_log":
+		return e.gitLog(ctx, args)
+	case "git_commit":
+		return e.gitCommit(ctx, args)
 	default:
 		return "", fmt.Errorf("unknown tool %q", name)
 	}
@@ -224,7 +420,7 @@ func (e *Executor) readFile(args json.RawMessage) (string, error) {
 	return b.String(), nil
 }
 
-func (e *Executor) writeFile(args json.RawMessage) (string, error) {
+func (e *Executor) writeFile(ctx context.Context, args json.RawMessage) (string, error) {
 	var a struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
@@ -241,7 +437,7 @@ func (e *Executor) writeFile(args json.RawMessage) (string, error) {
 	if len(a.Content) > 2<<20 {
 		return "", fmt.Errorf("refusing to write more than 2 MB")
 	}
-	abs, err := files.SafeJoin(e.Root, a.Path)
+	abs, err := e.mutablePath(a.Path)
 	if err != nil {
 		return "", err
 	}
@@ -252,6 +448,9 @@ func (e *Executor) writeFile(args json.RawMessage) (string, error) {
 	if _, statErr := os.Stat(abs); statErr == nil {
 		existed = true
 	}
+	if _, err := files.Snapshot(e.Root, files.Rel(e.Root, abs), "write_file"); err != nil {
+		return "", fmt.Errorf("could not checkpoint before writing: %w", err)
+	}
 	if err := os.WriteFile(abs, []byte(a.Content), 0o644); err != nil {
 		return "", err
 	}
@@ -259,8 +458,36 @@ func (e *Executor) writeFile(args json.RawMessage) (string, error) {
 	if existed {
 		action = "updated"
 	}
-	return fmt.Sprintf("%s %s (%d bytes, %d lines)", action, files.Rel(e.Root, abs), len(a.Content), strings.Count(a.Content, "\n")+1), nil
+	result := fmt.Sprintf("%s %s (%d bytes, %d lines)", action, files.Rel(e.Root, abs), len(a.Content), strings.Count(a.Content, "\n")+1)
+	if out, hookErr := e.Hooks.Run(ctx, e.Root, "after_edit", map[string]string{"MONET_FILE": files.Rel(e.Root, abs)}); hookErr != nil {
+		result += fmt.Sprintf("\nhook after_edit failed: %v\n%s", hookErr, out)
+	} else if strings.TrimSpace(out) != "" {
+		result += "\nhook after_edit:\n" + out
+	}
+	return result, nil
 }
+
+// mutablePath rejects Monet's own state and git internals.
+func (e *Executor) mutablePath(rel string) (string, error) {
+	abs, err := files.SafeJoin(e.Root, rel)
+	if err != nil {
+		return "", err
+	}
+	clean := files.Rel(e.Root, abs)
+	if clean == ".git" || strings.HasPrefix(clean, ".git/") || clean == ".monet" || strings.HasPrefix(clean, ".monet/") {
+		return "", fmt.Errorf("refusing to modify %s", clean)
+	}
+	return abs, nil
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+var _ = time.Second
 
 func (e *Executor) listFiles(args json.RawMessage) (string, error) {
 	var a struct {

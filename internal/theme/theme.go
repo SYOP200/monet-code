@@ -1,8 +1,8 @@
 // Package theme defines the Monet Code palette and shared lipgloss styles.
 //
-// Everything is painted on a GitHub-dark style canvas (#0D1117) with a
-// Nord-inspired frost palette: Frost Blue for body text, Glacier Teal and
-// Arctic Blue for accents.
+// Everything is painted on a true-black canvas (#000000) with a Nord-inspired
+// frost palette: Frost Blue for body text, Glacier Teal and Arctic Blue for
+// accents.
 package theme
 
 import "github.com/charmbracelet/lipgloss"
@@ -10,13 +10,13 @@ import "github.com/charmbracelet/lipgloss"
 // Core palette.
 var (
 	// Bg is the app canvas.
-	Bg = lipgloss.Color("#0D1117")
+	Bg = lipgloss.Color("#000000")
 	// BgPanel is used for the chrome (header, sidebar, status bar).
-	BgPanel = lipgloss.Color("#0F141B")
+	BgPanel = lipgloss.Color("#000000")
 	// BgRaised is used for selected rows and input fields.
-	BgRaised = lipgloss.Color("#16202B")
+	BgRaised = lipgloss.Color("#151515")
 	// BgCode is used for inline/fenced code.
-	BgCode = lipgloss.Color("#0A0F16")
+	BgCode = lipgloss.Color("#000000")
 
 	// Fg is the primary frost-blue foreground.
 	Fg = lipgloss.Color("#88C0D0")

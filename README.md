@@ -7,34 +7,55 @@ Everything talks to your own [Ollama](https://ollama.com) server and writes to
 one shared config file.
 
 ```
-  ◆ MONET CODE  v0.1.0  ·  local agent                                   ● ollama 0.40.16  qwen3-coder:30b
-  Chat   Editor   Models   Files                                       F2‑5 views  ·  ⌃o files  ·  F1 help
- FILES             monet │ FILE ORGANIZATION                                 ~/projects/monet  ·  6 loose files
-──────────────────────────────│╭ BY CATEGORY ────────────────────────────────────────────────────────────╮
- ▸ cmd                        ││  Documents .....  1 files     12.4 KB  →  Documents/                     │
- ▸ internal                   ││  Images ........  2 files      4.1 MB  →  Images/                        │
- · go.mod                     │╰─────────────────────────────────────────────────────────────────────────╯
- · go.sum                     │╭ PREVIEW ────────────────────────────────────────────────────────────────╮
- · README.md                  ││  notes.md  →  Documents/notes.md                                         │
- · main.py                    ││  shot.png  →  Images/shot.png                                            │
-                              │╰─────────────────────────────────────────────────────────────────────────╯
- o preview  ·  y apply  ·  r rescan  ·  n file  ·  N folder                              ~/projects/monet
+  ◆ MONET CODE  v0.2.0  ·  local agent                                   ● ollama 0.40.16  qwen3-coder:30b
+  Chat   Editor   Models   Files                             click tabs · F2‑5 · ⌃o files · F1 help · ⌃d quit
+ FILES             monet │ ◆ monet
+──────────────────────────│  ⋯ thinking…  comparing the tool registry with the slash commands
+ ▸ cmd                    │  · click to view
+ ▸ internal               │
+ · go.mod                 │  I will add a `delete_file` tool, checkpoint the target first, and
+ · README.md              │  keep `rm -rf` blocked at the shell boundary.
+                          │
+                          │╭ COMMANDS ───────────────────────────────────────────────────────────╮
+                          ││ /compact   summarize the conversation to save context               │
+                          ││ /commit    stage all changes and commit                             │
+                          │╰─────────────────────────────────────────────────────────────────────╯
+                          │╭─────────────────────────────────────────────────────────────────────╮
+                          ││ ❯ /co                                                               │
+                          │╰─────────────────────────────────────────────────────────────────────╯
+  enter send  ·  / commands  ·  pgup/pgdn or wheel scroll  ·  :q quit
 ```
 
 ## Features
 
-- **Chat** — streaming answers with thinking display, Markdown rendering and a
-  native Ollama tool loop. The agent can read, write, list, search and create
-  directories; writes always ask for approval first.
+- **Chat** — streaming answers with a persistent reasoning trace, Markdown
+  rendering and a native Ollama tool loop. Click a `thinking` line (or run
+  `/thinking`) to read the model's full reasoning in a scrollable popup.
+- **Slash-command palette** — type `/` to open a filtered command list above the
+  composer. `↑↓` choose, `tab` completes, `enter` runs, `esc` closes; every row
+  is clickable. Commands are discovered from disk as reusable skills.
 - **Editor** — a real text editor with line numbers, syntax-neutral theming,
-  dirty tracking and `⌃s` save. Open files from the tree or with `/edit`.
-- **Model catalog** — the installed Ollama models next to a curated catalog of
-  coding models, with size, parameters, family and purpose. Pull or delete
-  models without leaving the TUI, and the active model persists.
-- **File organization** — preview a dry-run plan that sorts loose top-level
-  files into `Documents/`, `Images/`, `Code/` and friends, then apply it. Hidden
-  files, symlinks and folders are never touched.
-- **File tree** — a keyboard-driven tree with create, rename and delete.
+  dirty tracking and `⌃s` save. Open files from the tree or with `/editor`.
+- **Model catalog** — installed Ollama models next to a curated catalog of coding
+  models, with size, parameters, family and purpose. Pull or delete models
+  without leaving the TUI, and the active model persists.
+- **File organization** — preview a dry-run plan that sorts loose top-level files
+  into `Documents/`, `Images/`, `Code/` and friends, then apply it. Hidden files,
+  symlinks and folders are never touched.
+- **File tree and worktrees** — a mouse- and keyboard-driven tree with create,
+  rename and delete, plus git worktree creation for parallel branches.
+- **Safe agent tools** — the model can read, write, create directories, delete
+  single files, move files, run builds/tests, and inspect or commit git state.
+  Mutations require approval, every edit is checkpointed, and destructive shell
+  patterns such as `rm -rf`, `sudo`, `mkfs` and `git clean` are refused.
+- **Sessions and rewind** — conversations are saved automatically, `/resume`
+  restores the transcript, `/compact` summarizes context, and `/rewind` restores
+  a checkpoint taken before the agent's edit.
+- **Project memory** — `AGENTS.md`, `CLAUDE.md`, `MONET.md` and
+  `.monet/memory.md` are loaded into the system prompt. `/init` creates an
+  `AGENTS.md`, `/remember` appends to memory, and `/reload` re-reads it.
+- **Hooks and subagents** — shell hooks run after edits and before commits;
+  read-only subagents investigate in parallel; sessions can message each other.
 - **Shared config** — the TUI and CLI both use
   `~/.config/monet/config.json` (or `$MONET_CONFIG_DIR/config.json`), so
   `monet models use` changes the TUI's next start.
@@ -46,6 +67,8 @@ one shared config file.
 | Go | 1.24+ | builds `bin/monet-tui` |
 | Python | 3.9+ | runs the `monet` CLI |
 | Ollama | any recent | `ollama serve`, with at least one model |
+| Git | optional | enables diff, commit, branches, push and worktrees |
+| GitHub CLI | optional | enables `/pr` and `/prs` |
 
 ## Install
 
@@ -68,7 +91,7 @@ Useful flags (pass them after `bash -s --`):
 curl -fsSL .../install.sh | bash -s -- --dir ~/opt/monet --bin-dir ~/.local/bin --modify-path
 
 # install a tag or branch, or replace an existing install
-curl -fsSL .../install.sh | bash -s -- --ref v0.1.0 --force
+curl -fsSL .../install.sh | bash -s -- --ref main --force
 
 # remove the launcher, install tree and PATH block (config is kept)
 curl -fsSL .../install.sh | bash -s -- --uninstall
@@ -112,39 +135,135 @@ pipx install --editable .
 
 | Key | Action |
 | --- | --- |
+| mouse | click tabs, command, model, file and preview rows, thinking lines |
 | `F2`..`F5` / `⌃1`..`⌃4` | switch between Chat, Editor, Models and Files |
 | `⌃o` | focus the file tree (`esc` leaves it) |
-| `F1` / `⌃h` | help |
-| `enter` | send a message, open a file, activate a model |
+| `F1` | help, including every command |
+| `enter` | send a message, run a command, open a file, activate a model |
 | `alt+enter` | newline in the composer or editor |
-| `pgup` / `pgdn` | scroll the conversation or preview |
+| `pgup` / `pgdn` / wheel | scroll the conversation or preview |
 | `⌃s` | save the open file |
 | `⌃n` | new file (editor) |
-| `esc` | cancel a turn, close a dialog, go back to chat |
-| `⌃c` | cancel the running turn, or quit when idle |
+| `esc` | close the popup, cancel a turn, go back to chat |
+| `⌃c` | cancel the running turn and show the exit hint |
+| `⌃d` / `:q` | quit (`:q!`, `:wq`, `:x` also work) |
 
 In the file tree: `a` new file, `A` new folder, `R` rename, `d` delete,
 `r` refresh. In Models: `tab` switches Installed/Catalog, `p` pulls a model,
 `d` deletes one, `/` filters. In Files: `o` builds the preview, `y` applies it.
 
-When the agent wants to write a file you will see an approval box. Press `y` to
-allow the single call, or `n` to deny it and let the model continue.
+When the agent wants to write, delete, move, run a command or commit, an
+approval box appears. Press `y` to allow that single call or `n` to deny it and
+let the model continue. Scroll never escapes the transcript; only the exit keys
+leave the TUI.
 
 ### Slash commands
 
 ```
-/help                 show help
-/model [name]         show models, or switch to name
-/files                open the organizer view
-/edit [path]          open a file in the editor
-/new <path>           create and open a file
-/save                 save the open file
-/clear                reset the conversation
-/status               model, Ollama version, history size, workspace
-/tools                list the agent tools
-/palette              print the color palette
-/quit                 quit
+/help /? /h               help
+/clear                    reset the conversation and start a new session
+/compact                  summarize older turns to free context
+/resume [session]         restore the latest or named session
+/sessions                 list saved sessions
+/session /id              show this session id, workspace and model
+/checkpoint [label]       snapshot the open file before a risky change
+/rewind [n] /undo         restore the nth most recent checkpoint
+/init                     create AGENTS.md project memory
+/remember <note>          append a note to .monet/memory.md
+/memory                   show the memory files that are loaded
+/reload                   re-read skills, memory and the file tree
+
+/model [name]             switch model, or open the catalog
+/models /files /editor    switch views
+/chat /new /save          composer helpers
+/review [path]            ask the agent to review the working tree
+/diff [path] /git <sub>   show git state (status, diff, log, branch…)
+/commit <message>         stage and commit after confirmation
+/worktree <name>          create a sibling git worktree
+/worktrees                list worktrees
+/branch <name>            create and switch to a branch
+/push [branch]            push (never forced)
+/pr [title] /prs          open or list GitHub pull requests via gh
+
+/agent <task>             start a read-only subagent
+/agents                   show subagent status
+/msg <session> <text>     message another Monet session
+/inbox                    read messages sent to this session
+/hooks                    show configured hooks
+/skills                   list custom commands found on disk
+/thinking /think          open the last reasoning trace
+/status /tools /palette   diagnostics
+/quit /exit /q            quit
 ```
+
+### Custom skills
+
+Drop Markdown files into one of these directories and they appear in the `/`
+palette after `/reload`:
+
+```
+.monet/commands/<name>.md          project skills
+.claude/commands/<name>.md        Claude Code-compatible skills
+~/.config/monet/commands/<name>.md user-wide skills
+```
+
+Optional front matter sets the description. `$ARGUMENTS` (or `{{args}}`) is
+replaced with whatever follows the command; otherwise the arguments are appended
+to the prompt.
+
+```markdown
+---
+description: review a pull request
+---
+Review $ARGUMENTS as a senior engineer. Use git_diff first, then read the
+changed files. Report bugs, risky changes and missing tests.
+```
+
+Project skills win over user skills with the same name; built-ins win over both.
+
+## Project memory and hooks
+
+The system prompt is rebuilt from these files in order when a session starts,
+after `/remember`, `/init` or `/reload`:
+
+```
+AGENTS.md
+CLAUDE.md
+MONET.md
+.monet/memory.md
+```
+
+Keep them short and specific: conventions, commands, architecture and things to
+avoid. `/remember` appends a dated line to `.monet/memory.md`.
+
+Hooks live in `.monet/hooks.json` and run with a 30-second timeout:
+
+```json
+{
+  "after_edit": "gofmt -w \"$MONET_FILE\"",
+  "before_commit": "go test ./...",
+  "after_tool": "echo $MONET_TOOL >> .monet/tool.log"
+}
+```
+
+`after_edit` receives `$MONET_FILE`; `after_tool` receives `$MONET_TOOL` and,
+for commands, `$MONET_COMMAND`. Hook failures are reported back to the model but
+never abort an edit. A failing `before_commit` hook does block the commit.
+
+## Sessions, checkpoints and messaging
+
+The TUI saves the conversation after every turn under
+`~/.config/monet/sessions/<id>.json` (thinking included). `/resume` loads the
+latest transcript and model; `/sessions` lists IDs you can pass to `/resume` or
+`/msg`. `/compact` replaces older turns with a model-written briefing.
+
+Before `write_file`, `delete_file` and `move_file`, the agent writes the old
+contents (or records that the file did not exist) under `.monet/checkpoints`.
+`/rewind` restores the most recent one, `/rewind 2` the one before it, and
+`/checkpoint` snapshots the file currently open in the editor.
+
+Every session has an ID and a JSONL inbox. `/msg latest please check the API`
+delivers a note to the most recent other session; `/inbox` reads and clears it.
 
 ## Using the CLI
 
@@ -202,7 +321,7 @@ The config file is shared by both front ends:
 - `ollama_url` — leave empty to use `$OLLAMA_HOST`, then
   `http://127.0.0.1:11434`.
 - `editor_tab_size` — spaces inserted by `tab` in the editor.
-- `system_prompt` — appended instructions for `monet ask`.
+- `system_prompt` — extra instructions appended to the agent's system prompt.
 
 Set `MONET_CONFIG_DIR` to keep multiple profiles, for example:
 
@@ -233,44 +352,67 @@ without configuration.
 | `read_file` | no | read a text file with line numbers and paging |
 | `list_files` | no | list a directory tree up to depth 3 |
 | `search_files` | no | search file contents |
-| `write_file` | **yes** | write the complete new contents of a file |
-| `create_directory` | **yes** | create a directory |
+| `git_status` | no | short status and branch |
+| `git_diff` | no | working-tree diff, optionally for one path |
+| `git_log` | no | recent one-line commits |
+| `write_file` | **yes** | write complete new contents; checkpointed first |
+| `create_directory` | **yes** | create a directory (and parents) |
+| `delete_file` | **yes** | delete one regular file; directories refused |
+| `move_file` | **yes** | move/rename one file; overwrite refused |
+| `run_command` | **yes** | run a shell command in the workspace |
+| `git_commit` | **yes** | run `before_commit`, stage, and commit |
 
 Every path is resolved with `files.SafeJoin`, which rejects anything that
 escapes the workspace, including `..` traversal and absolute paths outside the
-root. Writes are capped at 2 MB; reads at 2 MB per call.
+root. `.git` and `.monet` are never writable by the model. Writes are capped at
+4 MB; reads and search results are capped per call.
+
+`run_command` executes with `bash -lc` inside a workspace subdirectory and a
+hard timeout (default 60 s, max 5 min). Before execution, destructive patterns
+are rejected: recursive `rm`, `sudo`, `mkfs`, `dd`, broad `pkill`/`killall`,
+recursive `chmod`/`chown`, `git clean`, `git reset --hard`, forced pushes,
+`find -delete`, and disk redirection. Output is capped at 256 KB.
+
+Read-only subagents get only the six inspection tools, cannot ask for approval,
+and run with a shorter step budget. Up to four can run at once; `/agents` shows
+their status and findings return to the transcript.
 
 ## Architecture
 
 ```
 cmd/monet-tui/         Go entry point (flags: --dir, --model, --ollama-url)
-internal/theme/        palette and lipgloss styles
+internal/theme/        palette and lipgloss styles (black canvas)
 internal/config/       shared config load/save
 internal/catalog/      embedded curated catalog
 internal/ollama/       native Ollama client (streaming chat, pull, tools)
-internal/files/        organizer, safe paths, text IO, search
-internal/agent/        tool executor and streaming agent loop
-internal/ui/           bubbletea app: chat, editor, models, files, sidebar
+internal/files/        organizer, safe paths, text IO, search, checkpoints
+internal/agent/        tool executor, shell guard, hooks, git, agent loop
+internal/session/      saved conversations and cross-session inboxes
+internal/ui/           bubbletea app: chat, editor, models, files, sidebar,
+                       commands, mouse hit-testing, thinking modal
 monet_cli/             Typer + Rich CLI, Ollama client, organizer, catalog
 tests/                 Python unittest suite
 ```
 
 The TUI uses [Bubble Tea](https://github.com/charmbracelet/bubbletea),
 [Bubbles](https://github.com/charmbracelet/bubbles) and
-[Lip Gloss](https://github.com/charmbracelet/lipgloss). The CLI uses Typer and
-Rich. Markdown in the chat is rendered by a small purpose-built renderer so the
-frost palette stays exact at every width.
+[Lip Gloss](https://github.com/charmbracelet/lipgloss), with mouse cell-motion
+enabled. The CLI uses Typer and Rich. Markdown in the chat is rendered by a small
+purpose-built renderer so the frost palette stays exact at every width.
 
 ## Palette
 
 | Role | Color |
 | --- | --- |
-| Canvas | `#0D1117` |
+| Canvas (full terminal) | `#000000` |
+| Raised rows (chips, selection) | `#151515` |
 | Frost blue (primary text) | `#88C0D0` |
 | Glacier teal (accent) | `#8FBCBB` |
 | Arctic blue (secondary accent) | `#81A1C1` |
 
-Run `monet palette` to see swatches, or `/palette` in the TUI.
+The chrome, sidebar, transcript and modals all paint the canvas color, so no
+terminal background shows through. Run `monet palette` to see swatches, or
+`/palette` in the TUI.
 
 ## Development
 
@@ -282,9 +424,11 @@ make build    # rebuild both front ends
 make clean    # remove bin/, .venv and caches
 ```
 
-Go tests cover the organizer (dry-run safety, collisions), path escapes, tool
-execution, config round-trips, the embedded catalog and the exact frame size of
-every TUI view. The Python suite mirrors the organizer and config behavior.
+Go tests cover the organizer, path escapes, checkpoint restore, shell refusal
+rules, tool execution, hooks, git helpers, sessions, messaging, custom command
+loading, slash filtering, mouse tab clicks, the exit guard and the exact frame
+size of every view and modal. The Python suite mirrors the organizer and config
+behavior.
 
 To drive the TUI against a live server in a test, use the snapshot mode:
 
@@ -292,6 +436,7 @@ To drive the TUI against a live server in a test, use the snapshot mode:
 ./bin/monet-tui --snapshot --width 120 --height 40 --dir .
 ./bin/monet-tui --snapshot --snapshot-tab models --width 120 --height 40
 ./bin/monet-tui --snapshot --snapshot-tab editor --snapshot-file README.md
+./bin/monet-tui --snapshot --snapshot-tab thinking --width 100 --height 30
 ```
 
 ## Troubleshooting
@@ -302,6 +447,13 @@ To drive the TUI against a live server in a test, use the snapshot mode:
 **A model ignores tools** — not every model supports native tool calling.
 Qwen 3 Coder and Qwen 2.5 Coder are the most reliable choices; run
 `monet models recommend`.
+
+**A command was refused** — the safety guard blocks recursive deletion,
+privilege escalation and disk tools. Ask the agent to delete files one at a time,
+or run the command yourself outside Monet.
+
+**A bad edit landed** — run `/rewind` to restore the last checkpoint, or
+`/rewind 2` for the one before it.
 
 **`monet tui` asks for Go** — the CLI builds the TUI from source when it is
 missing or stale. Install Go, or point `MONET_TUI_BIN` at an existing binary.

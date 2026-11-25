@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.theme import Theme
 
 # The same palette as internal/theme/theme.go.
-BG = "#0D1117"
-BG_PANEL = "#0F141B"
-BG_RAISED = "#16202B"
+BG = "#000000"
+BG_PANEL = "#000000"
+BG_RAISED = "#151515"
 FG = "#88C0D0"
 TEAL = "#8FBCBB"
 BLUE = "#81A1C1"

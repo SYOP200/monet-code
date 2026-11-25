@@ -349,3 +349,44 @@ func fitPlain(s string, w int) string {
 	}
 	return s + strings.Repeat(" ", w-lipgloss.Width(s))
 }
+
+// rowAt maps a view-relative row to a model row. It returns the section
+// (0 installed, 1 catalog) and the filtered index, or ok=false for chrome.
+func (m *modelsPane) rowAt(viewY int) (section, row int, ok bool) {
+	if m.width < 30 || m.height < 10 || m.filtering {
+		return 0, 0, false
+	}
+	extra := 0
+	if m.pulling {
+		extra++
+	}
+	avail := m.height - 1 - extra
+	instH := avail / 2
+	if instH < 4 {
+		instH = 4
+	}
+	catH := avail - instH
+	instTop := 1 + extra
+	if viewY >= instTop+1 && viewY < instTop+instH-1 {
+		idx := m.offset[0] + viewY - (instTop + 1)
+		if idx >= 0 && idx < len(m.filteredInstalled()) {
+			return 0, idx, true
+		}
+	}
+	catTop := instTop + instH
+	if viewY >= catTop+1 && viewY < catTop+catH-1 {
+		idx := m.offset[1] + viewY - (catTop + 1)
+		if idx >= 0 && idx < len(m.filteredCatalog()) {
+			return 1, idx, true
+		}
+	}
+	return 0, 0, false
+}
+
+func (m *modelsPane) selectRow(section, row int) {
+	if section != 0 && section != 1 {
+		return
+	}
+	m.section = section
+	m.cursor[section] = row
+}

@@ -28,7 +28,7 @@ func main() {
 	flag.StringVar(&ollamaURL, "ollama-url", "", "Ollama base URL (default: config or OLLAMA_HOST)")
 	flag.BoolVar(&version, "version", false, "print the version and exit")
 	flag.BoolVar(&snapshot, "snapshot", false, "render one frame to stdout and exit (for testing)")
-	flag.StringVar(&snapTab, "snapshot-tab", "chat", "view to render in snapshot mode: chat, editor, models, files, help")
+	flag.StringVar(&snapTab, "snapshot-tab", "chat", "view to render in snapshot mode: chat, editor, models, files, help, thinking, message, slash")
 	flag.StringVar(&snapFile, "snapshot-file", "", "open this file in the editor for snapshot mode")
 	flag.IntVar(&snapW, "width", 120, "snapshot width")
 	flag.IntVar(&snapH, "height", 36, "snapshot height")
@@ -71,7 +71,7 @@ func main() {
 		return
 	}
 
-	program := tea.NewProgram(app, tea.WithAltScreen())
+	program := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "monet:", err)
 		os.Exit(1)

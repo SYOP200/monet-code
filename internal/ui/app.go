@@ -15,6 +15,7 @@ import (
 	"github.com/syop200/monet-code/internal/config"
 	"github.com/syop200/monet-code/internal/files"
 	"github.com/syop200/monet-code/internal/ollama"
+	"github.com/syop200/monet-code/internal/session"
 	"github.com/syop200/monet-code/internal/theme"
 )
 
@@ -30,7 +31,7 @@ const (
 var tabNames = []string{"Chat", "Editor", "Models", "Files"}
 
 // Version is the Monet Code release string.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // App is the root bubbletea model.
 type App struct {
@@ -65,6 +66,15 @@ type App struct {
 	animating bool
 
 	pullCh chan pullProgressMsg
+
+	commands []slashCommand
+	slash    slashState
+	tabHits  []tabHit
+
+	compacting  bool
+	sessionID   string
+	subagentSeq int
+	subagents   []subagentTask
 }
 
 type (
@@ -129,6 +139,9 @@ func New(root, model, ollamaURL string) *App {
 		loadingModels: true,
 	}
 	a.runner = agent.NewRunner(client, root, model)
+	a.sessionID = session.NewID()
+	a.reloadCommands()
+	a.refreshSystemPrompt()
 	a.models.activeModel = model
 	a.chat.setModel(model)
 	a.welcome()
@@ -139,7 +152,7 @@ func New(root, model, ollamaURL string) *App {
 func (a *App) welcome() {
 	a.chat.addNotice("monet code · local-first coding agent")
 	a.chat.addNotice("workspace  " + tildePath(a.root))
-	a.chat.addNotice("F2‑5 views  ·  F1 help  ·  / commands  ·  ask anything to begin")
+	a.chat.addNotice("F2‑5 views  ·  click tabs  ·  F1 help  ·  / commands  ·  :q or ⌃d to quit")
 	if a.chat.model == "" {
 		a.chat.addNotice("no model selected yet — open Models and pick or pull an Ollama model")
 	}
@@ -180,7 +193,15 @@ func (a *App) layout() {
 }
 
 func (a *App) busy() bool {
-	return a.chat.generating || a.models.pulling || a.models.loading || a.org.scanning
+	if a.chat.generating || a.models.pulling || a.models.loading || a.org.scanning || a.compacting {
+		return true
+	}
+	for _, s := range a.subagents {
+		if s.Status == "running" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) kick() tea.Cmd {
@@ -213,7 +234,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return a, a.handleKey(msg)
 	case tea.MouseMsg:
-		return a, nil
+		return a, a.handleMouse(msg)
 	case modelsLoadedMsg:
 		return a, a.handleModelsLoaded(msg)
 	case filesScanMsg:
@@ -227,6 +248,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.handleModelDeleted(msg)
 	case chatEventMsg:
 		return a, a.handleChatEvent(msg.ev)
+	case compactDoneMsg:
+		a.compacting = false
+		if msg.err != nil {
+			return a, a.notify("compact failed: "+msg.err.Error(), true)
+		}
+		return a, tea.Batch(a.notify(fmt.Sprintf("context compacted · %d chars of summary", len(msg.summary)), false), a.saveSessionCmd())
+	case shellDoneMsg:
+		return a, a.handleShellDone(msg)
+	case subagentDoneMsg:
+		return a, a.handleSubagentDone(msg)
 	case animMsg:
 		a.frame++
 		if a.busy() {
@@ -272,8 +303,10 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if k == "ctrl+c" {
 		if a.chat.generating {
 			a.cancelTurn()
-			return nil
 		}
+		return a.openMessage("CTRL+C", "Ctrl+C does not quit Monet Code. Use ctrl+d or :q to leave, esc to stay.")
+	}
+	if k == "ctrl+d" {
 		return a.quit()
 	}
 	if a.modal.kind != modalNone {
@@ -302,10 +335,14 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "ctrl+q":
-		return a.quit()
+		return a.notify("use ctrl+d or :q to quit", false)
 	case "esc":
 		if a.chat.generating {
 			a.cancelTurn()
+			return nil
+		}
+		if a.slash.visible {
+			a.hideSlashMenu()
 			return nil
 		}
 		if a.models.filtering {
@@ -353,9 +390,28 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 func (a *App) handleModalKey(msg tea.KeyMsg) tea.Cmd {
 	k := msg.String()
-	if a.modal.kind == modalHelp {
+	if a.modal.kind == modalMessage {
 		if k == "esc" || k == "enter" || k == "q" || k == "?" {
 			return a.closeModal()
+		}
+		return nil
+	}
+	if a.modal.kind == modalHelp || a.modal.kind == modalThinking {
+		switch k {
+		case "esc", "enter", "q", "?":
+			return a.closeModal()
+		case "up", "k":
+			a.modal.scroll--
+		case "down", "j":
+			a.modal.scroll++
+		case "pgup":
+			a.modal.scroll -= 12
+		case "pgdown":
+			a.modal.scroll += 12
+		case "home", "g":
+			a.modal.scroll = 0
+		case "end", "G":
+			a.modal.scroll = 1 << 30
 		}
 		return nil
 	}
@@ -406,6 +462,12 @@ func (a *App) submitModal() tea.Cmd {
 		cmd = a.deleteModel(payload)
 	case "files-apply":
 		cmd = a.applyPlan()
+	case "git-commit":
+		cmd = a.gitCommit(payload)
+	case "git-push":
+		cmd = a.pushBranch(payload)
+	case "gh-pr":
+		cmd = a.createPR(payload)
 	case "quit":
 		return tea.Quit
 	}
@@ -456,6 +518,9 @@ func (a *App) quit() tea.Cmd {
 // --- chat -----------------------------------------------------------------
 
 func (a *App) handleChatKey(msg tea.KeyMsg) tea.Cmd {
+	if cmd, handled := a.handleSlashKey(msg.String()); handled {
+		return cmd
+	}
 	switch msg.String() {
 	case "enter":
 		return a.sendChat()
@@ -468,6 +533,7 @@ func (a *App) handleChatKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	var cmd tea.Cmd
 	a.chat.input, cmd = a.chat.input.Update(msg)
+	a.updateSlashMenu()
 	return cmd
 }
 
@@ -476,6 +542,11 @@ func (a *App) sendChat() tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	a.hideSlashMenu()
+	if strings.HasPrefix(text, ":") {
+		a.chat.input.Reset()
+		return a.runVimCommand(text)
+	}
 	if strings.HasPrefix(text, "/") {
 		a.chat.input.Reset()
 		return a.runSlash(text)
@@ -483,16 +554,27 @@ func (a *App) sendChat() tea.Cmd {
 	if a.chat.generating {
 		return nil
 	}
+	a.chat.input.Reset()
+	return a.sendPrompt(text, text)
+}
+
+// sendPrompt shows display in the transcript and sends prompt to the model.
+func (a *App) sendPrompt(display, prompt string) tea.Cmd {
+	if a.chat.generating {
+		return a.notify("a turn is already running", true)
+	}
+	if a.compacting {
+		return a.notify("compaction is still running", true)
+	}
 	if a.chat.model == "" {
-		return a.notify("no model selected — open Models (⌃3)", true)
+		return a.notify("no model selected — open Models (F4)", true)
 	}
 	a.runner.SetModel(a.chat.model)
-	a.chat.addUser(text)
-	a.chat.input.Reset()
+	a.chat.addUser(display)
 	a.chat.startAssistant()
 	a.chat.pending = nil
 	a.chat.thinking.Reset()
-	gen, err := a.runner.Send(text)
+	gen, err := a.runner.Send(prompt)
 	if err != nil {
 		a.chat.addError(err.Error())
 		a.chat.finishStream()
@@ -500,6 +582,31 @@ func (a *App) sendChat() tea.Cmd {
 	}
 	a.chat.gen = gen
 	return a.kick()
+}
+
+// runVimCommand implements the small :q family so the TUI can be left the way
+// vim users expect, without ctrl+c quitting by accident.
+func (a *App) runVimCommand(text string) tea.Cmd {
+	switch strings.TrimSpace(text) {
+	case ":q", ":quit":
+		return a.quit()
+	case ":q!", ":quit!":
+		a.runner.Cancel()
+		return tea.Quit
+	case ":w", ":write":
+		return a.saveEditor()
+	case ":wq", ":x":
+		if a.editor.path != "" && a.editor.dirty {
+			if cmd := a.saveEditor(); cmd != nil {
+				a.runner.Cancel()
+				return tea.Batch(cmd, tea.Quit)
+			}
+		}
+		a.runner.Cancel()
+		return tea.Quit
+	default:
+		return a.notify("unknown vim command — try :q, :q!, :w, :wq", true)
+	}
 }
 
 func (a *App) waitChat() tea.Cmd {
@@ -523,16 +630,22 @@ func (a *App) handleChatEvent(ev agent.Event) tea.Cmd {
 		a.chat.appendDelta(ev.Text)
 	case agent.EventThinking:
 		a.chat.thinking.WriteString(ev.Text)
-		a.chat.activity = "thinking"
+		if a.chat.streaming != nil {
+			a.chat.streaming.thinking += ev.Text
+			a.chat.streaming.renderWidth = -1
+		}
+		a.chat.activity = "thinking…"
 	case agent.EventToolCall:
 		a.chat.pending = nil
 		a.chat.addTool(ev.ToolName, ev.Text)
+		a.chat.activity = toolActivity(ev.ToolName)
 	case agent.EventApproval:
 		a.chat.pending = &approvalRequest{tool: ev.ToolName, summary: ev.Text, args: ev.ToolArgs}
 		a.chat.activity = "awaiting approval"
 	case agent.EventToolResult:
 		a.chat.completeTool(ev.ToolName, ev.ToolResult)
-		if ev.ToolName == "write_file" || ev.ToolName == "create_directory" {
+		if ev.ToolName == "write_file" || ev.ToolName == "create_directory" ||
+			ev.ToolName == "delete_file" || ev.ToolName == "move_file" {
 			a.sidebar.reload()
 			extra = append(extra, a.scanFiles())
 		}
@@ -545,6 +658,8 @@ func (a *App) handleChatEvent(ev agent.Event) tea.Cmd {
 	case agent.EventDone:
 		a.chat.finishStream()
 		a.chat.gen = 0
+		a.deliverInbox()
+		extra = append(extra, a.saveSessionCmd())
 	}
 	extra = append(extra, a.waitChat())
 	return tea.Batch(extra...)
@@ -571,10 +686,111 @@ func (a *App) runSlash(text string) tea.Cmd {
 	case "/help", "/h", "/?":
 		return a.openHelp()
 	case "/clear":
+		if a.chat.generating {
+			return a.notify("wait for the current turn to finish", true)
+		}
 		a.chat.clear()
 		a.runner.Clear()
-		a.chat.addNotice("conversation cleared")
+		a.sessionID = session.NewID()
+		a.chat.addNotice("conversation cleared · new session " + a.sessionID)
 		return nil
+	case "/compact":
+		if a.chat.generating {
+			return a.notify("wait for the current turn to finish", true)
+		}
+		return a.compactCmd()
+	case "/sessions":
+		return a.showSessions()
+	case "/session", "/id":
+		a.chat.addNotice(fmt.Sprintf("session %s · workspace %s · model %s", a.sessionID, tildePath(a.root), a.chat.model))
+		return nil
+	case "/skills":
+		return a.showSkills()
+	case "/reload":
+		return a.reloadSkills()
+	case "/resume", "/continue":
+		if a.chat.generating {
+			return a.notify("wait for the current turn to finish", true)
+		}
+		return a.resumeSession(arg)
+	case "/checkpoint":
+		return a.checkpoint(arg)
+	case "/rewind", "/undo":
+		return a.rewind(arg)
+	case "/memory":
+		return a.showMemory()
+	case "/init":
+		return a.initMemory()
+	case "/remember":
+		return a.remember(arg)
+	case "/review":
+		subject := "the current working tree"
+		if arg != "" {
+			subject = arg
+		}
+		return a.sendPrompt("/review "+arg, "Review "+subject+" as a senior engineer. Use git_status and git_diff first, then read the relevant files. Report concrete bugs, risky changes, missing tests and simpler alternatives. Be concise and cite file paths.")
+	case "/commit":
+		if strings.TrimSpace(arg) == "" {
+			return a.notify("usage: /commit <message>", true)
+		}
+		return a.openConfirm("git-commit", "GIT COMMIT",
+			"Stage all changes and commit with message: "+arg, arg)
+	case "/diff":
+		cmd := "git diff --no-color"
+		if strings.TrimSpace(arg) != "" {
+			cmd += " -- " + shellQuote(arg)
+		}
+		return a.runShell("GIT DIFF", cmd)
+	case "/git":
+		sub := strings.TrimSpace(arg)
+		switch sub {
+		case "status", "diff", "log", "branch", "remote", "show":
+			return a.runShell("GIT "+strings.ToUpper(sub), "git "+sub)
+		case "":
+			return a.notify("usage: /git status|diff|log|branch|remote|show", true)
+		default:
+			return a.notify("unsupported git subcommand — use /git status|diff|log|branch|remote|show", true)
+		}
+	case "/worktree":
+		return a.createWorktree(arg)
+	case "/worktrees":
+		return a.listWorktrees()
+	case "/branch":
+		return a.createBranch(arg)
+	case "/push":
+		if strings.TrimSpace(arg) == "" {
+			return a.openConfirm("git-push", "GIT PUSH", "Push the current branch to its upstream?", "")
+		}
+		if !validGitRef(strings.TrimSpace(arg)) {
+			return a.notify("branch name has invalid characters", true)
+		}
+		return a.openConfirm("git-push", "GIT PUSH", "Push "+arg+" to origin and set upstream?", strings.TrimSpace(arg))
+	case "/pr":
+		return a.openConfirm("gh-pr", "GITHUB PR", "Publish this branch as a pull request with gh?", arg)
+	case "/prs":
+		return a.listPRs()
+	case "/agent":
+		return a.runSubagent(arg)
+	case "/agents":
+		if len(a.subagents) == 0 {
+			return a.notify("no subagents yet — /agent <task> starts one", false)
+		}
+		for _, s := range a.subagents {
+			a.chat.addNotice(fmt.Sprintf("%s  ·  %s  ·  %s", s.ID, s.Status, s.Task))
+		}
+		return nil
+	case "/hooks":
+		return a.showHooks()
+	case "/msg":
+		return a.sendSessionMessage(arg)
+	case "/inbox":
+		return a.showInbox()
+	case "/thinking", "/think":
+		text := a.chat.lastThinking
+		if a.chat.generating {
+			text = a.chat.thinking.String()
+		}
+		return a.openThinking(text)
 	case "/quit", "/exit":
 		return a.quit()
 	case "/models", "/model":
@@ -612,14 +828,20 @@ func (a *App) runSlash(text string) tea.Cmd {
 		}
 		a.chat.addNotice(fmt.Sprintf("model %s · ollama %s · %d installed · %d messages · %s",
 			mode, a.ollamaVersion, len(a.models.models), len(a.runner.History()), tildePath(a.root)))
-		return nil
+		if loaded := agent.MemoryFiles(a.root); len(loaded) > 0 {
+			a.chat.addNotice("memory  " + strings.Join(loaded, " · "))
+		}
+		return a.runShell("GIT STATUS", "git status --short --branch")
 	case "/tools":
-		a.chat.addNotice("tools: read_file · write_file · list_files · search_files · create_directory (writes need approval)")
+		a.chat.addNotice("tools: read_file · write_file · list_files · search_files · create_directory · delete_file · move_file · run_command · git_status · git_diff · git_log · git_commit (mutations need approval)")
 		return nil
 	case "/palette":
-		a.chat.addNotice("palette  #0D1117 canvas · #88C0D0 frost blue · #8FBCBB glacier teal · #81A1C1 arctic blue")
+		a.chat.addNotice("palette  #000000 canvas · #88C0D0 frost blue · #8FBCBB glacier teal · #81A1C1 arctic blue")
 		return nil
 	default:
+		if custom, ok := a.findCommand(cmd); ok && custom.Custom {
+			return a.sendPrompt(text, customPrompt(custom, arg))
+		}
 		return a.notify("unknown command "+cmd+" — try /help", true)
 	}
 }
@@ -697,6 +919,9 @@ func (a *App) createPath(rel string, dir bool, open bool) tea.Cmd {
 	if err != nil {
 		return a.notify(err.Error(), true)
 	}
+	if protectedRel(files.Rel(a.root, abs)) {
+		return a.notify("refusing to write inside .git or .monet", true)
+	}
 	if dir {
 		if err := os.MkdirAll(abs, 0o755); err != nil {
 			return a.notify(err.Error(), true)
@@ -737,6 +962,9 @@ func (a *App) renamePath(oldAbs, newName string) tea.Cmd {
 	if err != nil {
 		return a.notify(err.Error(), true)
 	}
+	if protectedRel(files.Rel(a.root, abs)) {
+		return a.notify("refusing to rename inside .git or .monet", true)
+	}
 	if _, err := os.Stat(abs); err == nil {
 		return a.notify("already exists: "+newName, true)
 	}
@@ -754,6 +982,9 @@ func (a *App) deletePath(abs string) tea.Cmd {
 	rel := files.Rel(a.root, abs)
 	if abs == a.root {
 		return a.notify("refusing to delete the workspace root", true)
+	}
+	if protectedRel(rel) {
+		return a.notify("refusing to delete .git or .monet", true)
 	}
 	if err := os.RemoveAll(abs); err != nil {
 		return a.notify(err.Error(), true)
@@ -1154,18 +1385,26 @@ func (a *App) headerView() string {
 	line1 := spread(left, right, a.width, theme.BgPanel)
 
 	tabs := ""
+	a.tabHits = a.tabHits[:0]
+	x := 1
 	for i, name := range tabNames {
 		label := " " + name + " "
+		labelW := lipgloss.Width(label)
+		a.tabHits = append(a.tabHits, tabHit{
+			hitbox: hitbox{x0: x, y0: 1, x1: x + labelW - 1, y1: 1},
+			tab:    tab(i),
+		})
 		if tab(i) == a.active {
 			tabs += theme.TabActive.Render(label)
 		} else {
 			tabs += theme.TabInactive.Render(label)
 		}
 		tabs += " "
+		x += labelW + 1
 	}
-	hint := "F2‑5 views  ·  ⌃o files  ·  F1 help"
+	hint := "click tabs · F2‑5 · ⌃o files · F1 help · ⌃d quit"
 	if a.sidebarW == 0 {
-		hint = "F2‑5 views  ·  F1 help"
+		hint = "click tabs · F2‑5 · F1 help · ⌃d quit"
 	}
 	if a.sidebarFocused {
 		hint = "file tree focused  ·  esc to leave"
@@ -1184,7 +1423,7 @@ func (a *App) statusView() string {
 	case a.active == tabChat && a.chat.generating:
 		hint = spinnerFrame(a.frame) + " " + a.chat.activity + "  ·  esc cancel  ·  streaming from " + a.chat.model
 	case a.active == tabChat:
-		hint = "enter send  ·  alt+enter newline  ·  / commands  ·  pgup/pgdn scroll"
+		hint = "enter send  ·  / commands  ·  pgup/pgdn or wheel scroll  ·  :q quit"
 	case a.active == tabEditor:
 		hint = "⌃s save  ·  ⌃n new  ·  tab indent  ·  esc chat"
 	case a.active == tabModels:
@@ -1214,6 +1453,8 @@ func (a *App) mainView(w, h int) string {
 	var content string
 	switch a.active {
 	case tabChat:
+		a.chat.menu = a.slashMenuView(w, a.slashMenuRows(h))
+		a.chat.menuH = a.slashMenuHeight(h)
 		content = a.chat.view(w, h, a.frame, a.chat.input.Focused() && !a.sidebarFocused)
 	case tabEditor:
 		content = a.editor.view(a.root, w, h, a.editor.ta.Focused() && !a.sidebarFocused)
@@ -1272,6 +1513,8 @@ func (a *App) Snapshot(w, h int) string {
 
 // SnapshotTab renders a specific view for layout testing.
 func (a *App) SnapshotTab(name string, w, h int) string {
+	a.modal = modalState{}
+	a.hideSlashMenu()
 	switch name {
 	case "editor":
 		a.active = tabEditor
@@ -1281,6 +1524,17 @@ func (a *App) SnapshotTab(name string, w, h int) string {
 		a.active = tabFiles
 	case "help":
 		a.modal = modalState{kind: modalHelp, title: "HELP", action: "help"}
+	case "thinking":
+		a.active = tabChat
+		a.modal = modalState{kind: modalThinking, title: "THINKING", action: "thinking",
+			text: "Reading the workspace first.\n\nThe package layout suggests the command popup belongs in internal/ui.\nI will keep the frame exactly filled by routing the popup through chat.view."}
+	case "message":
+		a.active = tabChat
+		a.modal = modalState{kind: modalMessage, title: "CTRL+C", desc: "Ctrl+C does not quit Monet Code. Use ctrl+d or :q to leave."}
+	case "slash":
+		a.active = tabChat
+		a.chat.input.SetValue("/")
+		a.updateSlashMenu()
 	default:
 		a.active = tabChat
 	}
@@ -1294,6 +1548,13 @@ func (a *App) LoadModelsForSnapshot(models []ollama.Model, version string) {
 
 // OpenForSnapshot opens a file in the editor for tests and documentation.
 func (a *App) OpenForSnapshot(path string) error { return a.editor.open(path) }
+
+// protectedRel reports whether a workspace-relative path is Monet or git state.
+func protectedRel(rel string) bool {
+	rel = strings.TrimPrefix(filepath.ToSlash(rel), "./")
+	return rel == ".git" || strings.HasPrefix(rel, ".git/") ||
+		rel == ".monet" || strings.HasPrefix(rel, ".monet/")
+}
 
 func tildePath(path string) string {
 	home, err := os.UserHomeDir()
