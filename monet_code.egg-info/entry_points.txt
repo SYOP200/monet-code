@@ -1,0 +1,2 @@
+[console_scripts]
+monet = monet_cli.cli:entrypoint

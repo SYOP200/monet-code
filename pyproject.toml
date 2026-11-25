@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monet-code"
+version = "0.1.0"
+description = "Monet Code — a local-first AI coding agent with a Go/Charm TUI and a Python/Typer CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Monet Code contributors" }]
+keywords = ["ai", "agent", "tui", "ollama", "cli", "coding"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Go",
+  "Topic :: Software Development",
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+monet = "monet_cli.cli:entrypoint"
+
+[project.urls]
+Homepage = "https://github.com/syop200/monet"
+
+[tool.setuptools.packages.find]
+include = ["monet_cli*"]
+
+[tool.setuptools.package-data]
+monet_cli = ["models.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

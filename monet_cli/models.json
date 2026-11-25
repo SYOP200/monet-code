@@ -1,0 +1,140 @@
+{
+  "updated": "2026-11",
+  "models": [
+    {
+      "name": "qwen3-coder:30b",
+      "title": "Qwen3 Coder 30B",
+      "family": "qwen3",
+      "params": "30B",
+      "size_gb": 18.6,
+      "tags": ["code", "agentic", "flagship"],
+      "description": "MoE coding specialist with strong tool use. The default daily driver for refactors and repo-scale edits."
+    },
+    {
+      "name": "qwen3.6:35b",
+      "title": "Qwen3.6 35B",
+      "family": "qwen3.6",
+      "params": "35B",
+      "size_gb": 22.6,
+      "tags": ["general", "reasoning", "long-context"],
+      "description": "Balanced generalist with a large context window. Good for planning sessions and mixed prose/code work."
+    },
+    {
+      "name": "qwen3.5:4b",
+      "title": "Qwen3.5 4B",
+      "family": "qwen3.5",
+      "params": "4B",
+      "size_gb": 3.3,
+      "tags": ["small", "fast", "laptop"],
+      "description": "Small and quick. Ideal for autocomplete-style questions, commit messages, and low-VRAM machines."
+    },
+    {
+      "name": "qwen2.5-coder:32b",
+      "title": "Qwen2.5 Coder 32B",
+      "family": "qwen2.5",
+      "params": "32B",
+      "size_gb": 19.9,
+      "tags": ["code", "dense"],
+      "description": "Dense coding model with reliable multi-file edits. A solid fallback when MoE models misbehave."
+    },
+    {
+      "name": "qwen2.5-coder:7b",
+      "title": "Qwen2.5 Coder 7B",
+      "family": "qwen2.5",
+      "params": "7B",
+      "size_gb": 4.7,
+      "tags": ["code", "fast"],
+      "description": "Compact coding model that runs comfortably on 8-16 GB of unified memory."
+    },
+    {
+      "name": "deepseek-r1:8b",
+      "title": "DeepSeek R1 8B",
+      "family": "deepseek-r1",
+      "params": "8B",
+      "size_gb": 5.2,
+      "tags": ["reasoning", "thinking"],
+      "description": "Distilled reasoning model. Shows its chain of thought in Monet's streaming thinking strip."
+    },
+    {
+      "name": "deepseek-coder-v2:16b",
+      "title": "DeepSeek Coder V2 16B",
+      "family": "deepseek-coder-v2",
+      "params": "16B",
+      "size_gb": 8.9,
+      "tags": ["code"],
+      "description": "Older but dependable code completion and infilling model."
+    },
+    {
+      "name": "dolphin3:8b",
+      "title": "Dolphin 3 8B",
+      "family": "llama",
+      "params": "8B",
+      "size_gb": 4.9,
+      "tags": ["uncensored", "general"],
+      "description": "Unfiltered instruct model useful for exploring unconventional solutions."
+    },
+    {
+      "name": "gemma3:12b",
+      "title": "Gemma 3 12B",
+      "family": "gemma3",
+      "params": "12B",
+      "size_gb": 8.1,
+      "tags": ["general", "vision"],
+      "description": "Google's multimodal generalist. Reads screenshots and diagrams alongside code."
+    },
+    {
+      "name": "llama3.3:70b",
+      "title": "Llama 3.3 70B",
+      "family": "llama",
+      "params": "70B",
+      "size_gb": 42.5,
+      "tags": ["general", "large"],
+      "description": "Large dense generalist for when you have the VRAM and want the extra reasoning headroom."
+    },
+    {
+      "name": "mistral:7b",
+      "title": "Mistral 7B",
+      "family": "mistral",
+      "params": "7B",
+      "size_gb": 4.1,
+      "tags": ["general", "fast"],
+      "description": "Classic lightweight instruct model. Good baseline for quick, terse answers."
+    },
+    {
+      "name": "phi4:14b",
+      "title": "Phi-4 14B",
+      "family": "phi4",
+      "params": "14B",
+      "size_gb": 9.1,
+      "tags": ["reasoning", "stem"],
+      "description": "Strong small-size STEM reasoner, especially good at math-heavy debugging."
+    },
+    {
+      "name": "codellama:13b",
+      "title": "Code Llama 13B",
+      "family": "llama",
+      "params": "13B",
+      "size_gb": 7.4,
+      "tags": ["code", "infill"],
+      "description": "Meta's code model with fill-in-the-middle support."
+    },
+    {
+      "name": "starcoder2:7b",
+      "title": "StarCoder2 7B",
+      "family": "starcoder2",
+      "params": "7B",
+      "size_gb": 4.0,
+      "tags": ["code", "completion"],
+      "description": "Trained on permissively licensed code; snappy completion model."
+    },
+    {
+      "name": "nomic-embed-text:latest",
+      "title": "Nomic Embed Text",
+      "family": "nomic-bert",
+      "params": "137M",
+      "size_gb": 0.3,
+      "tags": ["embedding"],
+      "description": "Embedding model for semantic search. Pair it with future repo indexing features."
+    }
+  ]
+}
