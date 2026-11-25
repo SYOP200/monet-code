@@ -30,7 +30,7 @@ dev = ["pytest>=8"]
 monet = "monet_cli.cli:entrypoint"
 
 [project.urls]
-Homepage = "https://github.com/syop200/monet"
+Homepage = "https://github.com/SYOP200/monet-code"
 
 [tool.setuptools.packages.find]
 include = ["monet_cli*"]

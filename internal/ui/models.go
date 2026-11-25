@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/syop200/monet/internal/catalog"
-	"github.com/syop200/monet/internal/ollama"
-	"github.com/syop200/monet/internal/theme"
+	"github.com/syop200/monet-code/internal/catalog"
+	"github.com/syop200/monet-code/internal/ollama"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 type modelsPane struct {

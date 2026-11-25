@@ -10,12 +10,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/syop200/monet/internal/agent"
-	"github.com/syop200/monet/internal/catalog"
-	"github.com/syop200/monet/internal/config"
-	"github.com/syop200/monet/internal/files"
-	"github.com/syop200/monet/internal/ollama"
-	"github.com/syop200/monet/internal/theme"
+	"github.com/syop200/monet-code/internal/agent"
+	"github.com/syop200/monet-code/internal/catalog"
+	"github.com/syop200/monet-code/internal/config"
+	"github.com/syop200/monet-code/internal/files"
+	"github.com/syop200/monet-code/internal/ollama"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 type tab int

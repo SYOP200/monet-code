@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/syop200/monet/internal/files"
-	"github.com/syop200/monet/internal/ollama"
+	"github.com/syop200/monet-code/internal/files"
+	"github.com/syop200/monet-code/internal/ollama"
 )
 
 // Executor runs tools inside a single workspace root.

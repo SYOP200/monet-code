@@ -5,11 +5,30 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
 BINARY_NAME = "monet-tui"
+
+
+def _repo_root() -> Path:
+    """Return the checkout that owns the TUI sources.
+
+    A normal source install keeps the Python package next to ``cmd/`` and
+    ``internal/``. The curl installer instead puts a pip-installed copy in a
+    virtualenv, so it exports ``MONET_REPO_DIR`` (or leaves the binary in
+    ``<install>/bin``) and we resolve the TUI from there.
+    """
+    env_root = os.environ.get("MONET_REPO_DIR")
+    if env_root:
+        candidate = Path(env_root).expanduser()
+        if (candidate / "go.mod").is_file() or (candidate / "bin" / BINARY_NAME).is_file():
+            return candidate
+    return Path(__file__).resolve().parents[1]
+
+
+REPO_ROOT = _repo_root()
 
 
 def repo_binary() -> Path:
@@ -21,7 +40,9 @@ def find_go() -> Optional[str]:
 
 
 def _sources() -> list:
-    return list((REPO_ROOT / "cmd").rglob("*.go")) + list((REPO_ROOT / "internal").rglob("*.go"))
+    return list((REPO_ROOT / "cmd").rglob("*.go")) + list(
+        (REPO_ROOT / "internal").rglob("*.go")
+    )
 
 
 def _is_stale(binary: Path) -> bool:
@@ -31,18 +52,34 @@ def _is_stale(binary: Path) -> bool:
     return any(path.stat().st_mtime > built for path in _sources() if path.exists())
 
 
+def _installed_binary() -> Optional[Path]:
+    """Find the TUI next to a virtualenv created by install.sh."""
+    candidates = [Path(sys.prefix).parent / "bin" / BINARY_NAME]
+    for parent in Path(sys.executable).absolute().parents:
+        candidates.append(parent / "bin" / BINARY_NAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def ensure_binary(rebuild: bool = False, quiet: bool = False) -> Path:
     """Return a runnable TUI binary, building it from source when needed."""
     env_binary = os.environ.get("MONET_TUI_BIN")
     if env_binary and Path(env_binary).expanduser().is_file():
         return Path(env_binary).expanduser()
+
     if not (REPO_ROOT / "go.mod").is_file():
+        installed = _installed_binary()
+        if installed:
+            return installed
         on_path = shutil.which(BINARY_NAME)
         if on_path:
             return Path(on_path)
         raise RuntimeError(
-            "monet-tui was not found. Install Monet Code from a source checkout or set MONET_TUI_BIN."
+            "monet-tui was not found. Re-run the Monet Code installer or set MONET_TUI_BIN."
         )
+
     binary = repo_binary()
     if not rebuild and not _is_stale(binary):
         return binary

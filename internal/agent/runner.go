@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/syop200/monet/internal/files"
-	"github.com/syop200/monet/internal/ollama"
+	"github.com/syop200/monet-code/internal/files"
+	"github.com/syop200/monet-code/internal/ollama"
 )
 
 // EventType enumerates runner events consumed by the TUI.

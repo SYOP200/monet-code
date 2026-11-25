@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/syop200/monet/internal/ui"
+	"github.com/syop200/monet-code/internal/ui"
 )
 
 func main() {

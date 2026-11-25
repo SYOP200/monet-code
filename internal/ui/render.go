@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/syop200/monet/internal/theme"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 // fitBlock forces a rendered block to exactly w columns and h rows, painting

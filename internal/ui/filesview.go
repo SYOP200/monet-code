@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/syop200/monet/internal/files"
-	"github.com/syop200/monet/internal/theme"
+	"github.com/syop200/monet-code/internal/files"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 type filesPane struct {

@@ -43,15 +43,49 @@ one shared config file.
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| Go | 1.23+ | builds `bin/monet-tui` |
+| Go | 1.24+ | builds `bin/monet-tui` |
 | Python | 3.9+ | runs the `monet` CLI |
 | Ollama | any recent | `ollama serve`, with at least one model |
 
 ## Install
 
+One line, no sudo, nothing installed system-wide:
+
 ```bash
-git clone https://github.com/syop200/monet.git
-cd monet
+curl -fsSL https://raw.githubusercontent.com/SYOP200/monet-code/main/install.sh | bash
+```
+
+The installer checks Go and Python, installs the sources under
+`~/.local/share/monet-code`, builds the TUI, creates a virtualenv for the CLI,
+and writes a `monet` launcher to `~/.local/bin`. Your config in
+`~/.config/monet` is left untouched, so an upgrade keeps the active model and
+settings.
+
+Useful flags (pass them after `bash -s --`):
+
+```bash
+# choose locations, or add ~/.local/bin to PATH automatically
+curl -fsSL .../install.sh | bash -s -- --dir ~/opt/monet --bin-dir ~/.local/bin --modify-path
+
+# install a tag or branch, or replace an existing install
+curl -fsSL .../install.sh | bash -s -- --ref v0.1.0 --force
+
+# remove the launcher, install tree and PATH block (config is kept)
+curl -fsSL .../install.sh | bash -s -- --uninstall
+```
+
+The full set is `--dir`, `--bin-dir`, `--ref`, `--repo`, `--source`,
+`--modify-path`, `--force`, `--uninstall` and `--help`. The same values can be
+set with `MONET_HOME`, `MONET_BIN_DIR`, `MONET_REF` and `MONET_REPO`.
+
+If `~/.local/bin` is not on your `PATH`, the installer prints the export line to
+add (or re-run it with `--modify-path`).
+
+### From a checkout
+
+```bash
+git clone https://github.com/SYOP200/monet-code.git
+cd monet-code
 make setup      # creates .venv, installs the CLI, downloads Go modules
 make build      # builds the TUI and syncs the catalog
 ```

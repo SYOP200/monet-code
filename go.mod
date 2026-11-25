@@ -1,6 +1,6 @@
-module github.com/syop200/monet
+module github.com/syop200/monet-code
 
-go 1.27.4
+go 1.24.2
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0

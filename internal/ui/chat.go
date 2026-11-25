@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/syop200/monet/internal/theme"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 type chatMessage struct {
