@@ -88,6 +88,9 @@ func NewSubagentRunner(client *ollama.Client, root, model string) *Runner {
 	}
 }
 
+// ReloadHooks re-reads project hooks without restarting the agent.
+func (r *Runner) ReloadHooks() { r.exec.ReloadHooks() }
+
 // Events is the stream of turn events.
 func (r *Runner) Events() <-chan Event { return r.events }
 

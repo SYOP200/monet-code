@@ -226,6 +226,7 @@ func (a *App) showSkills() tea.Cmd {
 func (a *App) reloadSkills() tea.Cmd {
 	a.reloadCommands()
 	a.refreshSystemPrompt()
+	a.runner.ReloadHooks()
 	a.sidebar.reload()
 	custom := 0
 	for _, c := range a.commands {

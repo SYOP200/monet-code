@@ -34,6 +34,13 @@ func NewReadOnlyExecutor(root string) *Executor {
 	return &Executor{Root: root, ReadOnly: true}
 }
 
+// ReloadHooks re-reads .monet/hooks.json after the user edits it.
+func (e *Executor) ReloadHooks() {
+	if !e.ReadOnly {
+		e.Hooks = LoadHooks(e.Root)
+	}
+}
+
 // Definitions returns the tool schema advertised to the model.
 func (e *Executor) Definitions() []ollama.Tool {
 	str := func(desc string) map[string]any {

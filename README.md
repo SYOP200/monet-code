@@ -171,7 +171,7 @@ leave the TUI.
 /init                     create AGENTS.md project memory
 /remember <note>          append a note to .monet/memory.md
 /memory                   show the memory files that are loaded
-/reload                   re-read skills, memory and the file tree
+/reload                   re-read skills, memory, hooks and the tree
 
 /model [name]             switch model, or open the catalog
 /models /files /editor    switch views

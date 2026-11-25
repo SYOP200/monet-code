@@ -130,6 +130,24 @@ func TestAfterEditHookRuns(t *testing.T) {
 	}
 }
 
+func TestReloadHooks(t *testing.T) {
+	root := t.TempDir()
+	e := NewExecutor(root)
+	if e.Hooks.AfterEdit != "" {
+		t.Fatal("unexpected hooks in a fresh workspace")
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".monet"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".monet", "hooks.json"), []byte(`{"after_edit":"true"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.ReloadHooks()
+	if e.Hooks.AfterEdit != "true" {
+		t.Fatalf("hooks were not reloaded: %+v", e.Hooks)
+	}
+}
+
 func TestGitTools(t *testing.T) {
 	root := t.TempDir()
 	e := NewExecutor(root)

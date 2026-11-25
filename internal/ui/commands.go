@@ -63,7 +63,7 @@ func builtinCommands() []slashCommand {
 		{Name: "/agents", Desc: "list subagents and their status"},
 		{Name: "/hooks", Desc: "show configured hooks"},
 		{Name: "/skills", Desc: "list custom commands discovered on disk"},
-		{Name: "/reload", Desc: "reload skills, memory and the file tree"},
+		{Name: "/reload", Desc: "reload skills, memory, hooks and the tree"},
 		{Name: "/msg", Args: "<session> <text>", Desc: "message another Monet session", NeedsArg: true},
 		{Name: "/inbox", Desc: "read messages from other sessions"},
 		{Name: "/worktrees", Desc: "list git worktrees"},
