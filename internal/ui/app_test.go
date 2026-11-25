@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/syop200/monet-code/internal/theme"
 )
 
 func TestSnapshotsFillTheirFrame(t *testing.T) {
@@ -30,6 +31,13 @@ func TestSnapshotsFillTheirFrame(t *testing.T) {
 			for i, line := range lines {
 				if got := lipgloss.Width(line); got != size.w {
 					t.Errorf("%s %dx%d: row %d is %d columns", view, size.w, size.h, i, got)
+				}
+				if !strings.HasPrefix(line, sgrReset+bgSequence(theme.Bg)) {
+					t.Errorf("%s %dx%d: row %d does not start on the canvas", view, size.w, size.h, i)
+				}
+				rest := strings.ReplaceAll(line, sgrReset+bgSequence(theme.Bg), "")
+				if strings.Contains(rest, sgrReset) {
+					t.Errorf("%s %dx%d: row %d drops the canvas after a reset", view, size.w, size.h, i)
 				}
 			}
 		}

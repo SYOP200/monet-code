@@ -71,9 +71,27 @@ func main() {
 		return
 	}
 
+	restoreBackground := setTerminalBackground()
+	defer restoreBackground()
 	program := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := program.Run(); err != nil {
+		restoreBackground()
 		fmt.Fprintln(os.Stderr, "monet:", err)
 		os.Exit(1)
+	}
+}
+
+// setTerminalBackground paints the terminal's default background black for the
+// duration of the session. The app fills every cell itself, but the terminal
+// still uses its own background for erased areas (for example while the alt
+// screen is being set up or torn down). OSC 111 restores the user's colour.
+func setTerminalBackground() func() {
+	fi, err := os.Stdout.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return func() {}
+	}
+	fmt.Fprint(os.Stdout, "\x1b]11;#000000\x07")
+	return func() {
+		fmt.Fprint(os.Stdout, "\x1b]111\x07")
 	}
 }

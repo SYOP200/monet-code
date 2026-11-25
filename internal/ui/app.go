@@ -1482,7 +1482,7 @@ func (a *App) View() string {
 	} else {
 		body = a.mainView(a.width, bodyH)
 	}
-	return header + "\n" + body + "\n" + status
+	return paintCanvas(header+"\n"+body+"\n"+status, a.width, theme.Bg)
 }
 
 func joinColumns(left, right string, lw, rw, h int) string {

@@ -3,12 +3,50 @@ package ui
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/syop200/monet-code/internal/theme"
 )
+
+// sgrReset terminates every lipgloss span.
+const sgrReset = "\x1b[0m"
+
+// bgSequence returns the SGR sequence that fills cells with c.
+func bgSequence(c lipgloss.Color) string {
+	hex := strings.TrimPrefix(string(c), "#")
+	if len(hex) != 6 {
+		return ""
+	}
+	v, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", (v>>16)&0xff, (v>>8)&0xff, v&0xff)
+}
+
+// paintCanvas repaints every cell of a finished frame with bg. Nested lipgloss
+// renders emit a full SGR reset when a span ends, which drops the background
+// for the rest of the line; re-applying the canvas after each reset, and at the
+// start of every line, keeps the whole window painted even where text has no
+// explicit style. Erasing the line then also uses the canvas colour.
+func paintCanvas(frame string, w int, bg lipgloss.Color) string {
+	seq := bgSequence(bg)
+	if seq == "" {
+		return frame
+	}
+	lines := strings.Split(frame, "\n")
+	for i, line := range lines {
+		line = strings.ReplaceAll(line, sgrReset, sgrReset+seq)
+		if lw := lipgloss.Width(line); lw < w {
+			line += strings.Repeat(" ", w-lw)
+		}
+		lines[i] = sgrReset + seq + line
+	}
+	return strings.Join(lines, "\n")
+}
 
 // fitBlock forces a rendered block to exactly w columns and h rows, painting
 // padding with bg so theme resets never punch holes in the canvas.
