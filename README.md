@@ -124,6 +124,10 @@ monet update --force     # reinstall the current release
 monet update --tag v0.2.1
 ```
 
+Installs made before v0.2.1 do not ship the updater yet. Run the installer once
+with `--force` to reach v0.2.1; every later release can then be installed with
+`monet update` or `/update`.
+
 Every asset is checked against the release's SHA-256 sums before it replaces
 `bin/monet-tui` or the bundled CLI. Config, sessions and checkpoints are
 untouched. Restart the TUI afterwards to run the new binary.
