@@ -27,7 +27,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from . import __version__, catalog, config, ollama, organize
-from .build import ensure_binary, repo_binary
+from .build import ensure_binary
 from .theme import BLUE, DIM, FG, GREEN, RED, TEAL, YELLOW, banner, console, swatches
 
 SKIP_DIRS = {
@@ -773,17 +773,26 @@ def doctor() -> None:
     add("python", sys.version_info >= (3, 9), py)
 
     go = shutil.which("go")
-    go_detail = "not found"
     if go:
+        go_detail = "not found"
         try:
             proc = subprocess.run([go, "version"], capture_output=True, text=True, timeout=5)
             go_detail = (proc.stdout or proc.stderr).strip()
         except (OSError, subprocess.SubprocessError) as exc:
             go_detail = str(exc)
-    add("go toolchain", bool(go), go_detail, warn=not go)
+        add("go toolchain", True, go_detail)
+    else:
+        t.add_row(
+            "go toolchain",
+            Text("–", style=DIM),
+            Text("not needed for a prebuilt install", style=DIM),
+        )
 
-    binary = repo_binary()
-    add("tui binary", binary.is_file(), str(binary), warn=not binary.is_file())
+    try:
+        binary = ensure_binary(quiet=True)
+        add("tui binary", True, str(binary))
+    except RuntimeError as exc:
+        add("tui binary", False, str(exc))
 
     try:
         version = ollama.version()

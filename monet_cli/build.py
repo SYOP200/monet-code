@@ -53,10 +53,17 @@ def _is_stale(binary: Path) -> bool:
 
 
 def _installed_binary() -> Optional[Path]:
-    """Find the TUI next to a virtualenv created by install.sh."""
-    candidates = [Path(sys.prefix).parent / "bin" / BINARY_NAME]
+    """Find the TUI installed next to the CLI by install.sh."""
+    candidates = []
+    home = os.environ.get("MONET_HOME")
+    if home:
+        candidates.append(Path(home).expanduser() / "bin" / BINARY_NAME)
+    candidates.append(Path(sys.prefix).parent / "bin" / BINARY_NAME)
     for parent in Path(sys.executable).absolute().parents:
         candidates.append(parent / "bin" / BINARY_NAME)
+    on_path = shutil.which(BINARY_NAME)
+    if on_path:
+        candidates.append(Path(on_path))
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -73,16 +80,18 @@ def ensure_binary(rebuild: bool = False, quiet: bool = False) -> Path:
         installed = _installed_binary()
         if installed:
             return installed
-        on_path = shutil.which(BINARY_NAME)
-        if on_path:
-            return Path(on_path)
         raise RuntimeError(
             "monet-tui was not found. Re-run the Monet Code installer or set MONET_TUI_BIN."
         )
 
     binary = repo_binary()
-    if not rebuild and not _is_stale(binary):
-        return binary
+    if binary.is_file() and not rebuild:
+        if not _is_stale(binary):
+            return binary
+        # A release install ships a prebuilt binary next to the sources. If
+        # there is no Go toolchain we cannot rebuild it, so run what we have.
+        if not find_go():
+            return binary
     go = find_go()
     if not go:
         raise RuntimeError(

@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Go tests
+        run: go test ./...
+      - name: Python tests
+        run: python -m unittest discover -s tests -v
+
+  tui:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+      - name: Build the TUI
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags "-s -w" -o monet-tui-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/monet-tui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monet-tui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: monet-tui-${{ matrix.goos }}-${{ matrix.goarch }}
+          if-no-files-found: error
+
+  cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Bundle the CLI
+        run: |
+          cp internal/catalog/models.json monet_cli/models.json
+          rm -rf build/cli
+          python -m pip install --quiet --no-compile --target build/cli .
+          test -f build/cli/monet_cli/__main__.py
+          tar -czf monet-cli.tar.gz -C build/cli .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monet-cli
+          path: monet-cli.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [test, tui, cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        run: |
+          cd dist
+          sha256sum monet-tui-* monet-cli.tar.gz > checksums.txt
+          cat checksums.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

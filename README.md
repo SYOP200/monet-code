@@ -64,25 +64,31 @@ one shared config file.
 
 | Tool | Version | Notes |
 | --- | --- | --- |
-| Go | 1.24+ | builds `bin/monet-tui` |
-| Python | 3.9+ | runs the `monet` CLI |
+| curl + tar | any | only needed by the installer |
+| Python | 3.9+ | runs the `monet` CLI; optional, the TUI is a standalone binary |
 | Ollama | any recent | `ollama serve`, with at least one model |
 | Git | optional | enables diff, commit, branches, push and worktrees |
 | GitHub CLI | optional | enables `/pr` and `/prs` |
+| Go | optional | only to build from source; releases ship prebuilt binaries |
 
 ## Install
 
-One line, no sudo, nothing installed system-wide:
+One line, no sudo, nothing installed system-wide. Prebuilt binaries are
+downloaded for macOS and Linux (amd64 and arm64), so **Go, Git, pip and
+virtualenvs are not required**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SYOP200/monet-code/main/install.sh | bash
 ```
 
-The installer checks Go and Python, installs the sources under
-`~/.local/share/monet-code`, builds the TUI, creates a virtualenv for the CLI,
-and writes a `monet` launcher to `~/.local/bin`. Your config in
-`~/.config/monet` is left untouched, so an upgrade keeps the active model and
-settings.
+The installer downloads the latest GitHub release, verifies every asset against
+the published SHA-256 checksums, installs the static TUI and a self-contained
+CLI under `~/.local/share/monet-code`, and writes a `monet` launcher to
+`~/.local/bin`. Your config in `~/.config/monet` is left untouched, so an
+upgrade keeps the active model and settings.
+
+This works the same on Arch, Ubuntu, Fedora and macOS; there is nothing to
+install with pacman/apt first except `curl`, which both platforms ship.
 
 Useful flags (pass them after `bash -s --`):
 
@@ -90,8 +96,11 @@ Useful flags (pass them after `bash -s --`):
 # choose locations, or add ~/.local/bin to PATH automatically
 curl -fsSL .../install.sh | bash -s -- --dir ~/opt/monet --bin-dir ~/.local/bin --modify-path
 
-# install a tag or branch, or replace an existing install
-curl -fsSL .../install.sh | bash -s -- --ref main --force
+# pin a release, or replace an existing install
+curl -fsSL .../install.sh | bash -s -- --ref v0.2.0 --force
+
+# build a branch from source instead (needs Go 1.24+)
+curl -fsSL .../install.sh | bash -s -- --ref main
 
 # remove the launcher, install tree and PATH block (config is kept)
 curl -fsSL .../install.sh | bash -s -- --uninstall
@@ -106,11 +115,13 @@ add (or re-run it with `--modify-path`).
 
 ### From a checkout
 
+Only needed for development; the normal install does not use Go:
+
 ```bash
 git clone https://github.com/SYOP200/monet-code.git
 cd monet-code
 make setup      # creates .venv, installs the CLI, downloads Go modules
-make build      # builds the TUI and syncs the catalog
+make release    # builds dist/ assets for all four platforms
 ```
 
 Then launch either front end:
@@ -455,8 +466,9 @@ or run the command yourself outside Monet.
 **A bad edit landed** — run `/rewind` to restore the last checkpoint, or
 `/rewind 2` for the one before it.
 
-**`monet tui` asks for Go** — the CLI builds the TUI from source when it is
-missing or stale. Install Go, or point `MONET_TUI_BIN` at an existing binary.
+**`monet tui` asks for Go** — a prebuilt install never needs Go. If you see
+this, the install is from source; re-run the installer (which downloads a
+release), or point `MONET_TUI_BIN` at an existing binary.
 
 **Colors look wrong** — use a truecolor terminal. The TUI paints every cell
 with the canvas color, so partial 256-color support will look muddy.

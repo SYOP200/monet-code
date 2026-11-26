@@ -5,7 +5,7 @@ VENV := .venv
 PIP := $(VENV)/bin/pip
 MONET := $(VENV)/bin/monet
 
-.PHONY: all setup build go-build cli sync-catalog run tui test fmt vet clean doctor help
+.PHONY: all setup build go-build cli sync-catalog run tui test fmt vet clean doctor release help
 
 all: build
 
@@ -17,6 +17,8 @@ help:
 	@echo "  make test        run Go + Python tests"
 	@echo "  make fmt         format Go and byte-compile Python"
 	@echo "  make clean       remove build artefacts and the virtualenv"
+	@echo "  make doctor      check the local toolchain and Ollama"
+	@echo "  make release     build the release binaries and the CLI bundle"
 
 setup: sync-catalog
 	$(PYTHON) -m venv $(VENV)
@@ -59,6 +61,9 @@ vet:
 
 doctor: build
 	$(MONET) doctor
+
+release: sync-catalog
+	@bash scripts/build-release.sh
 
 clean:
 	rm -rf bin dist build *.egg-info monet_cli/__pycache__ tests/__pycache__
