@@ -255,6 +255,9 @@ then
 else
 	PYTHON=""
 	warn "Python 3.9+ not found; installing the TUI only (monet will open the TUI, but monet ask/models need Python)"
+	if [ "$OS" = linux ] && have pacman; then
+		warn "on Arch install it with: sudo pacman -S python, then re-run this installer to enable the CLI"
+	fi
 fi
 
 # --------------------------------------------------------------------------- #
