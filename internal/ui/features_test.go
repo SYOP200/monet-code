@@ -42,14 +42,14 @@ func TestBuiltinCommandsCoverWorkflow(t *testing.T) {
 		"/editor", "/chat", "/review", "/commit", "/diff", "/git",
 		"/worktree", "/agent", "/agents", "/hooks", "/skills", "/reload",
 		"/msg", "/inbox", "/thinking", "/status", "/tools", "/quit",
-		"/worktrees", "/branch", "/push", "/pr", "/prs",
+		"/worktrees", "/branch", "/push", "/pr", "/prs", "/update",
 	}
 	for _, name := range want {
 		if _, ok := app.findCommand(name); !ok {
 			t.Errorf("missing command %s", name)
 		}
 	}
-	for _, alias := range []string{"/q", "/exit", "/h", "/think", "/undo", "/continue"} {
+	for _, alias := range []string{"/q", "/exit", "/h", "/think", "/undo", "/continue", "/upgrade"} {
 		if _, ok := app.findCommand(alias); !ok {
 			t.Errorf("missing alias %s", alias)
 		}
@@ -60,6 +60,24 @@ func TestBuiltinCommandsCoverWorkflow(t *testing.T) {
 			t.Errorf("duplicate command %s", c.Name)
 		}
 		seen[c.Name] = true
+	}
+}
+
+func TestUpdateCommandConfirmsAndChecks(t *testing.T) {
+	app := testApp(t)
+	app.runSlash("/update")
+	if app.modal.kind != modalConfirm || app.modal.action != "update" {
+		t.Fatalf("update should ask for confirmation, got %#v", app.modal)
+	}
+	app.modal = modalState{}
+	app.runSlash("/update check")
+	if !app.updating {
+		t.Fatal("check should mark the app as updating")
+	}
+	app.updating = false
+	app.runSlash("/update nonsense")
+	if app.modal.kind != modalNone {
+		t.Fatal("invalid arguments should not open the confirm modal")
 	}
 }
 

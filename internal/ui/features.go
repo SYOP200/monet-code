@@ -14,6 +14,7 @@ import (
 	"github.com/syop200/monet-code/internal/files"
 	"github.com/syop200/monet-code/internal/ollama"
 	"github.com/syop200/monet-code/internal/session"
+	"github.com/syop200/monet-code/internal/update"
 )
 
 type compactDoneMsg struct {
@@ -24,6 +25,12 @@ type compactDoneMsg struct {
 type shellDoneMsg struct {
 	title  string
 	output string
+	err    error
+}
+
+type updateDoneMsg struct {
+	result update.Result
+	check  bool
 	err    error
 }
 
@@ -86,6 +93,58 @@ func (a *App) runShell(title, command string) tea.Cmd {
 		res, err := agent.RunShell(ctx, root, command, "", 40*time.Second)
 		return shellDoneMsg{title: title, output: res.Output, err: err}
 	}
+}
+
+// checkUpdate asks GitHub for the latest tag without touching the install.
+func (a *App) checkUpdate() tea.Cmd {
+	return a.startUpdate("", true)
+}
+
+// runUpdate replaces the installed TUI and CLI with a verified release.
+func (a *App) runUpdate(arg string) tea.Cmd {
+	return a.startUpdate(strings.TrimSpace(arg), false)
+}
+
+func (a *App) startUpdate(arg string, check bool) tea.Cmd {
+	if a.updating {
+		return a.notify("an update is already running", false)
+	}
+	a.updating = true
+	opts := update.Options{CurrentVersion: Version, Check: check}
+	switch {
+	case arg == "force":
+		opts.Force = true
+	case strings.HasPrefix(arg, "v"):
+		opts.Tag = arg
+	}
+	return tea.Batch(a.kick(), func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		result, err := update.Run(ctx, opts)
+		return updateDoneMsg{result: result, check: check, err: err}
+	})
+}
+
+func (a *App) handleUpdateDone(msg updateDoneMsg) tea.Cmd {
+	a.updating = false
+	if msg.err != nil {
+		a.chat.addError("update: " + msg.err.Error())
+		return a.notify("update failed", true)
+	}
+	if msg.check {
+		if update.IsNewer(msg.result.Latest, msg.result.Current) {
+			a.chat.addNotice(fmt.Sprintf("update available · %s → %s · run /update to install",
+				msg.result.Current, msg.result.Latest))
+			return a.notify("update available · "+msg.result.Latest, false)
+		}
+		return a.notify("up to date · "+msg.result.Current, false)
+	}
+	if msg.result.Updated {
+		a.chat.addNotice(fmt.Sprintf("updated %s → %s · restart Monet Code to run the new build",
+			msg.result.Current, msg.result.Latest))
+		return a.notify("updated to "+msg.result.Latest+" · restart to apply", false)
+	}
+	return a.notify("already on the latest release · "+msg.result.Current, false)
 }
 
 func (a *App) checkpoint(label string) tea.Cmd {

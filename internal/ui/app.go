@@ -31,7 +31,7 @@ const (
 var tabNames = []string{"Chat", "Editor", "Models", "Files"}
 
 // Version is the Monet Code release string.
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 // App is the root bubbletea model.
 type App struct {
@@ -72,6 +72,7 @@ type App struct {
 	tabHits  []tabHit
 
 	compacting  bool
+	updating    bool
 	sessionID   string
 	subagentSeq int
 	subagents   []subagentTask
@@ -193,7 +194,7 @@ func (a *App) layout() {
 }
 
 func (a *App) busy() bool {
-	if a.chat.generating || a.models.pulling || a.models.loading || a.org.scanning || a.compacting {
+	if a.chat.generating || a.models.pulling || a.models.loading || a.org.scanning || a.compacting || a.updating {
 		return true
 	}
 	for _, s := range a.subagents {
@@ -256,6 +257,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.notify(fmt.Sprintf("context compacted · %d chars of summary", len(msg.summary)), false), a.saveSessionCmd())
 	case shellDoneMsg:
 		return a, a.handleShellDone(msg)
+	case updateDoneMsg:
+		return a, a.handleUpdateDone(msg)
 	case subagentDoneMsg:
 		return a, a.handleSubagentDone(msg)
 	case animMsg:
@@ -468,6 +471,8 @@ func (a *App) submitModal() tea.Cmd {
 		cmd = a.pushBranch(payload)
 	case "gh-pr":
 		cmd = a.createPR(payload)
+	case "update":
+		cmd = a.runUpdate(payload)
 	case "quit":
 		return tea.Quit
 	}
@@ -838,6 +843,26 @@ func (a *App) runSlash(text string) tea.Cmd {
 	case "/palette":
 		a.chat.addNotice("palette  #000000 canvas · #88C0D0 frost blue · #8FBCBB glacier teal · #81A1C1 arctic blue")
 		return nil
+	case "/update", "/upgrade":
+		if a.chat.generating {
+			return a.notify("wait for the current turn to finish", true)
+		}
+		arg := strings.TrimSpace(arg)
+		switch {
+		case arg == "check":
+			return a.checkUpdate()
+		case arg == "" || arg == "force" || strings.HasPrefix(arg, "v"):
+			desc := "Download and install the latest release? The TUI and bundled CLI are replaced; config and sessions are kept."
+			if arg == "force" {
+				desc = "Reinstall the current release? The TUI and bundled CLI are replaced; config and sessions are kept."
+			}
+			if strings.HasPrefix(arg, "v") {
+				desc = "Install release " + arg + "? The TUI and bundled CLI are replaced; config and sessions are kept."
+			}
+			return a.openConfirm("update", "UPDATE MONET CODE", desc, arg)
+		default:
+			return a.notify("usage: /update [check|force|vX.Y.Z]", true)
+		}
 	default:
 		if custom, ok := a.findCommand(cmd); ok && custom.Custom {
 			return a.sendPrompt(text, customPrompt(custom, arg))
@@ -1418,6 +1443,8 @@ func (a *App) statusView() string {
 	switch {
 	case a.sidebarFocused:
 		hint = "↑↓ move  ·  enter open  ·  a file  ·  A folder  ·  R rename  ·  d delete"
+	case a.updating:
+		hint = spinnerFrame(a.frame) + " updating Monet Code…  ·  replacing the installed binary and CLI"
 	case a.active == tabChat && a.chat.pending != nil:
 		hint = "y approve  ·  n deny  ·  esc cancel"
 	case a.active == tabChat && a.chat.generating:

@@ -75,6 +75,7 @@ func builtinCommands() []slashCommand {
 		{Name: "/status", Desc: "model, workspace, git and context status"},
 		{Name: "/tools", Desc: "list the tools the model can call"},
 		{Name: "/palette", Desc: "show the palette"},
+		{Name: "/update", Args: "[check|force|vX.Y.Z]", Desc: "upgrade this install to the latest release", Aliases: []string{"/upgrade"}},
 		{Name: "/quit", Desc: "leave Monet Code", Aliases: []string{"/exit", "/q"}},
 	}
 }

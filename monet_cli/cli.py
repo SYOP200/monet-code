@@ -758,6 +758,52 @@ def config_path_cmd() -> None:
 # --------------------------------------------------------------------------- #
 
 
+@app.command("update")
+def update_cmd(
+    check: bool = typer.Option(False, "--check", help="Only report whether a newer release exists."),
+    force: bool = typer.Option(False, "--force", help="Reinstall even when already current."),
+    tag: str = typer.Option("", "--tag", help="Install a specific release tag instead of the latest."),
+) -> None:
+    """Upgrade this prebuilt install to the latest release."""
+    _run_update(check=check, force=force, tag=tag)
+
+
+@app.command("upgrade", hidden=True)
+def upgrade_cmd(
+    check: bool = typer.Option(False, "--check", help="Only report whether a newer release exists."),
+    force: bool = typer.Option(False, "--force", help="Reinstall even when already current."),
+    tag: str = typer.Option("", "--tag", help="Install a specific release tag instead of the latest."),
+) -> None:
+    """Alias for update."""
+    _run_update(check=check, force=force, tag=tag)
+
+
+def _run_update(check: bool, force: bool, tag: str) -> None:
+    from . import update as updater
+
+    try:
+        result = updater.run_update(tag=tag or None, force=force, check=check, log=note)
+    except updater.UpdateError as exc:
+        fail(str(exc))
+        return
+
+    if check:
+        if result.latest == result.current:
+            ok(f"up to date · {result.current}")
+        else:
+            console.print(
+                f"  [{DIM}]current[/] {result.current}   [{DIM}]latest[/] {result.latest}"
+            )
+            note("run monet update to install it")
+        return
+
+    if result.updated:
+        ok(f"updated {result.current} → {result.latest}")
+        note("restart the TUI to use the new build")
+    else:
+        ok(f"already on the latest release · {result.current}")
+
+
 @app.command("doctor")
 def doctor() -> None:
     """Check the local toolchain, Ollama, TUI binary, and config."""

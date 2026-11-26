@@ -7,7 +7,7 @@ Everything talks to your own [Ollama](https://ollama.com) server and writes to
 one shared config file.
 
 ```
-  ◆ MONET CODE  v0.2.0  ·  local agent                                   ● ollama 0.40.16  qwen3-coder:30b
+  ◆ MONET CODE  v0.2.1  ·  local agent                                   ● ollama 0.40.16  qwen3-coder:30b
   Chat   Editor   Models   Files                             click tabs · F2‑5 · ⌃o files · F1 help · ⌃d quit
  FILES             monet │ ◆ monet
 ──────────────────────────│  ⋯ thinking…  comparing the tool registry with the slash commands
@@ -97,7 +97,7 @@ Useful flags (pass them after `bash -s --`):
 curl -fsSL .../install.sh | bash -s -- --dir ~/opt/monet --bin-dir ~/.local/bin --modify-path
 
 # pin a release, or replace an existing install
-curl -fsSL .../install.sh | bash -s -- --ref v0.2.0 --force
+curl -fsSL .../install.sh | bash -s -- --ref v0.2.1 --force
 
 # build a branch from source instead (needs Go 1.24+)
 curl -fsSL .../install.sh | bash -s -- --ref main
@@ -112,6 +112,26 @@ set with `MONET_HOME`, `MONET_BIN_DIR`, `MONET_REF` and `MONET_REPO`.
 
 If `~/.local/bin` is not on your `PATH`, the installer prints the export line to
 add (or re-run it with `--modify-path`).
+
+### Updating
+
+Prebuilt installs update in place; there is no need to re-run the installer:
+
+```bash
+monet update             # download and install the latest release
+monet update --check     # only report whether a newer release exists
+monet update --force     # reinstall the current release
+monet update --tag v0.2.1
+```
+
+Every asset is checked against the release's SHA-256 sums before it replaces
+`bin/monet-tui` or the bundled CLI. Config, sessions and checkpoints are
+untouched. Restart the TUI afterwards to run the new binary.
+
+From inside the TUI, `/update` does the same after a confirmation, `/update check`
+only reports whether a newer release exists, and `/update force` reinstalls the
+current one. The running process keeps using the old binary until you restart,
+so an update never interrupts a turn.
 
 ### From a checkout
 
@@ -204,6 +224,7 @@ leave the TUI.
 /skills                   list custom commands found on disk
 /thinking /think          open the last reasoning trace
 /status /tools /palette   diagnostics
+/update [check|force|vX]  upgrade the installed TUI and CLI in place
 /quit /exit /q            quit
 ```
 
@@ -307,6 +328,8 @@ monet config path
 
 # diagnostics
 monet doctor
+monet update              # upgrade to the latest release
+monet update --check
 monet palette
 ```
 

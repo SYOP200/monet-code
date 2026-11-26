@@ -612,6 +612,7 @@ say "    ${FROST}monet${RESET}                    open the terminal UI"
 say "    ${FROST}monet ask \"explain this repo\"${RESET}"
 say "    ${FROST}monet models recommend${RESET}    browse the curated catalog"
 say "    ${FROST}monet doctor${RESET}              check Python, Ollama, the TUI and config"
+say "    ${FROST}monet update${RESET}              upgrade to the latest release"
 say ""
 if [ "$ON_PATH" = 0 ]; then
 	say "  ${YELLOW}Add it to your PATH for this session:${RESET}"

@@ -207,6 +207,7 @@ func helpContent(width int) string {
 		cmd("/agent /agents /sessions /session /resume /checkpoint /rewind"),
 		cmd("/init /remember /memory /hooks /skills /reload"),
 		cmd("/msg /inbox /worktrees /branch /push /pr /prs"),
+		cmd("/update [check|force|vX.Y.Z]"),
 		"",
 		sectionLine("editor"),
 		keyLine("⌃s", "save") + "     " + keyLine("⌃n", "new file") + "     " + keyLine("tab", "indent"),
